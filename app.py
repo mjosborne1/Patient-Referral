@@ -1673,6 +1673,33 @@ def create_referral_bundle_route(patient_id):
     form_data = get_form_data(request)
     form_data['patient_id'] = patient_id
     logging.info(f"Referral form data: {json.dumps(form_data, indent=2)}")
+
+    attach_summary = form_data.get('attach_summary', '') in ('on', 'true', '1')
+    summary_mode = form_data.get('summary_mode', 'hint')
+
+    if attach_summary:
+        ps_producer = os.environ.get('PS_PRODUCER', get_fhir_server_url()).rstrip('/')
+        summary_url = f"{ps_producer}/Patient/{patient_id}/$summary"
+        form_data['summary_endpoint_url'] = summary_url
+
+        if summary_mode == 'inline':
+            # Fetch the summary bundle now so the bundler can embed it
+            try:
+                resp = fhir_get(
+                    f"/Patient/{patient_id}/$summary",
+                    fhir_server_url=ps_producer,
+                    auth_credentials=get_fhir_auth_credentials(),
+                    timeout=30,
+                )
+                if resp.status_code == 200:
+                    form_data['summary_bundle_json'] = json.dumps(resp.json())
+                else:
+                    logging.warning(f"$summary returned {resp.status_code}; falling back to hint mode")
+                    form_data['summary_mode'] = 'hint'
+            except Exception as exc:
+                logging.warning(f"$summary fetch failed: {exc}; falling back to hint mode")
+                form_data['summary_mode'] = 'hint'
+
     bundle = create_referral_bundle(
         form_data=form_data,
         fhir_server_url=get_fhir_server_url(),

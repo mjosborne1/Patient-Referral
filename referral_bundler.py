@@ -221,21 +221,93 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
         ],
     }
 
+    entries = [
+        _make_entry(encounter, "Encounter"),
+        _make_entry(service_request, "ServiceRequest"),
+        _make_entry(task, "Task"),
+        _make_entry(doc_ref, "DocumentReference"),
+    ]
+
+    # --- Optional: AU Patient Summary attachment ---
+    attach_summary = form_data.get("attach_summary", "") in ("on", "true", "1")
+    if attach_summary:
+        summary_mode = form_data.get("summary_mode", "hint")
+        ps_docref_id = str(uuid.uuid4())
+
+        if summary_mode == "inline":
+            # Option A: base64-encode the full $summary bundle inline
+            summary_json = form_data.get("summary_bundle_json", "")
+            if summary_json:
+                ps_b64 = base64.b64encode(summary_json.encode("utf-8")).decode("ascii")
+                ps_doc_ref = {
+                    "resourceType": "DocumentReference",
+                    "id": ps_docref_id,
+                    "status": "current",
+                    "type": {
+                        "coding": [
+                            {
+                                "system": "http://loinc.org",
+                                "code": "60591-5",
+                                "display": "Patient summary Document",
+                            }
+                        ]
+                    },
+                    "subject": patient_ref,
+                    "content": [
+                        {
+                            "attachment": {
+                                "contentType": "application/fhir+json",
+                                "data": ps_b64,
+                            }
+                        }
+                    ],
+                }
+                entries.append(_make_entry(ps_doc_ref, "DocumentReference"))
+                service_request["supportingInfo"].append({"reference": f"urn:uuid:{ps_docref_id}"})
+                logging.info(f"AU PS attached inline (base64), docref={ps_docref_id}")
+
+        else:
+            # Option B: endpoint hint URL — specialist fetches directly
+            summary_url = form_data.get("summary_endpoint_url", "")
+            if summary_url:
+                ps_doc_ref = {
+                    "resourceType": "DocumentReference",
+                    "id": ps_docref_id,
+                    "status": "current",
+                    "type": {
+                        "coding": [
+                            {
+                                "system": "http://loinc.org",
+                                "code": "60591-5",
+                                "display": "Patient summary Document",
+                            }
+                        ]
+                    },
+                    "subject": patient_ref,
+                    "content": [
+                        {
+                            "attachment": {
+                                "contentType": "application/fhir+json",
+                                "url": summary_url,
+                            }
+                        }
+                    ],
+                }
+                entries.append(_make_entry(ps_doc_ref, "DocumentReference"))
+                service_request["supportingInfo"].append({"reference": f"urn:uuid:{ps_docref_id}"})
+                logging.info(f"AU PS endpoint hint attached: {summary_url}, docref={ps_docref_id}")
+
     bundle = {
         "resourceType": "Bundle",
         "id": str(uuid.uuid4()),
         "type": "transaction",
         "timestamp": now,
-        "entry": [
-            _make_entry(encounter, "Encounter"),
-            _make_entry(service_request, "ServiceRequest"),
-            _make_entry(task, "Task"),
-            _make_entry(doc_ref, "DocumentReference"),
-        ],
+        "entry": entries,
     }
 
     logging.info(
         f"Referral bundle created: sr={sr_id}, task={task_id}, "
-        f"patient={patient_id}, priority={priority}"
+        f"patient={patient_id}, priority={priority}, "
+        f"entries={len(entries)}"
     )
     return bundle
