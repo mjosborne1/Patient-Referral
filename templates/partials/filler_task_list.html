@@ -1,0 +1,77 @@
+{% if tasks %}
+<table class="table table-hover table-sm mb-0 align-middle">
+    <thead class="table-light sticky-top">
+        <tr>
+            <th>Patient</th>
+            <th>Specialty / Service</th>
+            <th>Priority</th>
+            <th>Requester</th>
+            <th>Status</th>
+            <th>Authored</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for t in tasks %}
+    <tr class="filler-task-row" id="task-row-{{ t.id }}" style="cursor:pointer;"
+        onclick="viewTask('{{ t.id }}')">
+        <td class="text-nowrap">
+            <small>{{ t.patient_display or t.patient_ref }}</small>
+        </td>
+        <td>
+            <span class="fw-semibold" style="font-size:0.88em;">{{ t.service_code }}</span>
+            {% if t.performer %}
+            <div class="text-muted" style="font-size:0.76em;">→ {{ t.performer }}</div>
+            {% endif %}
+        </td>
+        <td>
+            {% set p = t.priority %}
+            {% if p == 'stat' %}
+                <span class="badge bg-danger">STAT</span>
+            {% elif p == 'asap' %}
+                <span class="badge bg-warning text-dark">ASAP</span>
+            {% elif p == 'urgent' %}
+                <span class="badge bg-orange" style="background:#fd7e14!important;">Urgent</span>
+            {% else %}
+                <span class="badge bg-secondary">Routine</span>
+            {% endif %}
+        </td>
+        <td><small>{{ t.requester }}</small></td>
+        <td>
+            {% set s = t.status %}
+            {% if s == 'completed' %}
+                <span class="badge bg-success">{{ s }}</span>
+            {% elif s in ('rejected', 'cancelled', 'failed') %}
+                <span class="badge bg-danger">{{ s }}</span>
+            {% elif s == 'in-progress' %}
+                <span class="badge bg-warning text-dark">{{ s }}</span>
+            {% elif s == 'accepted' %}
+                <span class="badge bg-primary">{{ s }}</span>
+            {% elif s == 'received' %}
+                <span class="badge bg-info text-dark">{{ s }}</span>
+            {% elif s == 'on-hold' %}
+                <span class="badge bg-light text-dark border">{{ s }}</span>
+            {% else %}
+                <span class="badge bg-secondary">{{ s }}</span>
+            {% endif %}
+        </td>
+        <td><small class="text-muted">{{ t.authored_on[:10] if t.authored_on else '—' }}</small></td>
+        <td>
+            <button class="btn btn-outline-secondary btn-sm py-0"
+                    onclick="event.stopPropagation(); viewTask('{{ t.id }}')">
+                <i class="fas fa-eye"></i>
+            </button>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<div class="px-3 py-2 text-muted" style="font-size:0.8em;">
+    {{ tasks|length }} referral{{ 's' if tasks|length != 1 else '' }}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="fas fa-inbox fa-2x mb-3 d-block opacity-25"></i>
+    No referrals found for the selected status.
+</div>
+{% endif %}

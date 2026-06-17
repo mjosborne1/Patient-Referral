@@ -2644,6 +2644,273 @@ def airport_screen():
     return render_template('airport.html')
 
 
+# ── Filler / Specialist View (Scenario 1, proposal 04) ─────────────────────
+
+def _parse_task(task_res, service_requests, doc_refs):
+    """Extract a flat display dict from a Task resource and included resources."""
+    sr_ref = task_res.get('focus', {}).get('reference', '')
+    sr_id = sr_ref.split('/')[-1] if '/' in sr_ref else sr_ref
+    sr = service_requests.get(sr_id, {})
+
+    code_concept = sr.get('code', {})
+    service_code = (
+        code_concept.get('text')
+        or (code_concept.get('coding', [{}])[0].get('display', ''))
+        or 'Unknown service'
+    )
+
+    performer = ''
+    if sr.get('performer'):
+        performer = sr['performer'][0].get('display', '')
+
+    reason = ''
+    if sr.get('reasonCode'):
+        reason = sr['reasonCode'][0].get('text') or (
+            sr['reasonCode'][0].get('coding', [{}])[0].get('display', ''))
+
+    # Clinical narrative from supportingInfo DocumentReference (LOINC 107903-7)
+    clinical_narrative = ''
+    summary_url = ''
+    for si in sr.get('supportingInfo', []):
+        dr_ref = si.get('reference', '')
+        dr_id = dr_ref.split('/')[-1] if '/' in dr_ref else dr_ref
+        dr = doc_refs.get(dr_id, {})
+        if not dr:
+            continue
+        dr_type_code = (dr.get('type', {}).get('coding', [{}]) or [{}])[0].get('code', '')
+        for content in dr.get('content', []):
+            att = content.get('attachment', {})
+            if dr_type_code == '107903-7' and att.get('data'):
+                try:
+                    import base64 as _b64
+                    clinical_narrative = _b64.b64decode(att['data']).decode('utf-8')
+                except Exception:
+                    clinical_narrative = att.get('data', '')
+            elif dr_type_code == '60591-5':
+                summary_url = att.get('url', '')
+
+    status_reason_obj = task_res.get('statusReason', {})
+    status_reason = status_reason_obj.get('text', '') if isinstance(status_reason_obj, dict) else ''
+
+    patient_ref = task_res.get('for', {}).get('reference', '')
+    patient_display = task_res.get('for', {}).get('display', '')
+
+    return {
+        'id': task_res.get('id', ''),
+        'status': task_res.get('status', 'unknown'),
+        'status_reason': status_reason,
+        'intent': task_res.get('intent', ''),
+        'priority': sr.get('priority', task_res.get('priority', 'routine')),
+        'service_code': service_code,
+        'performer': performer,
+        'reason': reason,
+        'patient_ref': patient_ref,
+        'patient_display': patient_display,
+        'requester': task_res.get('requester', {}).get('display', ''),
+        'authored_on': task_res.get('authoredOn', ''),
+        'clinical_narrative': clinical_narrative,
+        'summary_url': summary_url,
+        'sr_id': sr_id,
+    }
+
+
+def _fetch_tasks_bundle(status_filter=None):
+    """Fetch Tasks (and included ServiceRequests + DocumentReferences) from the FHIR server."""
+    server = get_fhir_server_url()
+    auth = get_fhir_auth_credentials()
+    bearer = get_fhir_bearer_token()
+
+    open_statuses = 'requested,received,accepted,in-progress,on-hold'
+    params = {
+        'status': status_filter if status_filter else open_statuses,
+        '_include': ['Task:focus', 'Task:patient'],
+        '_count': 50,
+        '_sort': '-authored-on',
+    }
+    headers = {'Accept': 'application/fhir+json'}
+    if bearer:
+        headers['Authorization'] = f'Bearer {bearer}'
+
+    url = server.rstrip('/') + '/Task'
+    kwargs = {'params': params, 'headers': headers, 'timeout': 20}
+    if auth and not bearer:
+        kwargs['auth'] = auth
+
+    try:
+        resp = requests.get(url, **kwargs)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logging.warning(f"Filler task fetch failed: {exc}")
+        return {'resourceType': 'Bundle', 'entry': []}
+
+
+@app.route('/filler')
+@login_required
+def filler_screen():
+    return render_template('filler_dashboard.html')
+
+
+@app.route('/filler/tasks', methods=['GET'])
+@login_required
+def filler_tasks():
+    status_filter = request.args.get('status', '').strip()
+    data = _fetch_tasks_bundle(status_filter or None)
+
+    service_requests = {}
+    doc_refs = {}
+    raw_tasks = []
+
+    for entry in data.get('entry', []):
+        res = entry.get('resource', {})
+        rt = res.get('resourceType', '')
+        if rt == 'Task':
+            raw_tasks.append(res)
+        elif rt == 'ServiceRequest':
+            service_requests[res.get('id', '')] = res
+        elif rt == 'DocumentReference':
+            doc_refs[res.get('id', '')] = res
+
+    tasks = [_parse_task(t, service_requests, doc_refs) for t in raw_tasks]
+    return render_template('partials/filler_task_list.html', tasks=tasks), 200
+
+
+@app.route('/filler/task/<task_id>', methods=['GET'])
+@login_required
+def filler_task_detail(task_id):
+    server = get_fhir_server_url()
+    auth = get_fhir_auth_credentials()
+    bearer = get_fhir_bearer_token()
+    headers = {'Accept': 'application/fhir+json'}
+    if bearer:
+        headers['Authorization'] = f'Bearer {bearer}'
+
+    # Fetch Task + focus ServiceRequest + related DocumentReferences
+    params = {'_include': ['Task:focus'], '_revinclude': 'DocumentReference:related'}
+    url = f"{server.rstrip('/')}/Task/{task_id}"
+    kwargs = {'params': params, 'headers': headers, 'timeout': 15}
+    if auth and not bearer:
+        kwargs['auth'] = auth
+
+    service_requests = {}
+    doc_refs = {}
+    task_res = None
+
+    try:
+        resp = requests.get(url, **kwargs)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('resourceType') == 'Task':
+                task_res = data
+            elif data.get('resourceType') == 'Bundle':
+                for entry in data.get('entry', []):
+                    res = entry.get('resource', {})
+                    rt = res.get('resourceType', '')
+                    if rt == 'Task' and res.get('id') == task_id:
+                        task_res = res
+                    elif rt == 'ServiceRequest':
+                        service_requests[res.get('id', '')] = res
+                    elif rt == 'DocumentReference':
+                        doc_refs[res.get('id', '')] = res
+
+                # Fetch any SR referenced in Task.focus that wasn't _included
+                if task_res and not service_requests:
+                    sr_ref = task_res.get('focus', {}).get('reference', '')
+                    if sr_ref:
+                        sr_id = sr_ref.split('/')[-1]
+                        sr_url = f"{server.rstrip('/')}/ServiceRequest/{sr_id}"
+                        sr_resp = requests.get(sr_url, headers=headers,
+                                               timeout=10, **(({'auth': auth} if auth and not bearer else {})))
+                        if sr_resp.status_code == 200:
+                            sr = sr_resp.json()
+                            service_requests[sr.get('id', '')] = sr
+
+                            # Fetch DocumentReferences for supportingInfo
+                            for si in sr.get('supportingInfo', []):
+                                dr_ref = si.get('reference', '')
+                                if dr_ref.startswith('DocumentReference/') or '/' in dr_ref:
+                                    dr_id = dr_ref.split('/')[-1]
+                                    dr_url = f"{server.rstrip('/')}/DocumentReference/{dr_id}"
+                                    dr_resp = requests.get(dr_url, headers=headers,
+                                                           timeout=10, **(({'auth': auth} if auth and not bearer else {})))
+                                    if dr_resp.status_code == 200:
+                                        dr = dr_resp.json()
+                                        doc_refs[dr.get('id', '')] = dr
+    except Exception as exc:
+        logging.warning(f"Filler task detail fetch failed: {exc}")
+
+    task = _parse_task(task_res, service_requests, doc_refs) if task_res else None
+    return render_template('partials/filler_task_detail.html', task=task), 200
+
+
+@app.route('/filler/task/<task_id>/status', methods=['POST'])
+@login_required
+def filler_update_task_status(task_id):
+    new_status = request.form.get('status', '').strip()
+    status_reason_text = request.form.get('status_reason', '').strip()
+    valid_statuses = {
+        'received', 'accepted', 'in-progress', 'on-hold',
+        'completed', 'rejected', 'cancelled', 'failed',
+    }
+    if new_status not in valid_statuses:
+        return jsonify({'error': f'Invalid status: {new_status}'}), 400
+
+    server = get_fhir_server_url()
+    auth = get_fhir_auth_credentials()
+    bearer = get_fhir_bearer_token()
+    headers = {'Accept': 'application/fhir+json', 'Content-Type': 'application/fhir+json'}
+    if bearer:
+        headers['Authorization'] = f'Bearer {bearer}'
+    kwargs_get = {'headers': {k: v for k, v in headers.items() if k != 'Content-Type'}, 'timeout': 15}
+    if auth and not bearer:
+        kwargs_get['auth'] = auth
+
+    # GET current Task
+    task_url = f"{server.rstrip('/')}/Task/{task_id}"
+    try:
+        get_resp = requests.get(task_url, **kwargs_get)
+        get_resp.raise_for_status()
+        task_res = get_resp.json()
+    except Exception as exc:
+        logging.error(f"Could not fetch Task {task_id} for status update: {exc}")
+        return jsonify({'error': str(exc)}), 502
+
+    # Apply update
+    task_res['status'] = new_status
+    if status_reason_text:
+        task_res['statusReason'] = {'text': status_reason_text}
+    elif new_status in ('rejected', 'cancelled'):
+        task_res.setdefault('statusReason', {'text': new_status})
+
+    # PUT back
+    kwargs_put = {'headers': headers, 'json': task_res, 'timeout': 15}
+    if auth and not bearer:
+        kwargs_put['auth'] = auth
+    try:
+        put_resp = requests.put(task_url, **kwargs_put)
+        put_resp.raise_for_status()
+    except Exception as exc:
+        logging.error(f"Task {task_id} status PUT failed: {exc}")
+        return jsonify({'error': str(exc)}), 502
+
+    # Return refreshed task list (HTMX target = #fillerTaskList)
+    data = _fetch_tasks_bundle()
+    service_requests = {}
+    doc_refs = {}
+    raw_tasks = []
+    for entry in data.get('entry', []):
+        res = entry.get('resource', {})
+        rt = res.get('resourceType', '')
+        if rt == 'Task':
+            raw_tasks.append(res)
+        elif rt == 'ServiceRequest':
+            service_requests[res.get('id', '')] = res
+        elif rt == 'DocumentReference':
+            doc_refs[res.get('id', '')] = res
+    tasks = [_parse_task(t, service_requests, doc_refs) for t in raw_tasks]
+    return render_template('partials/filler_task_list.html', tasks=tasks), 200
+
+
 @app.route('/api/organisations/with-tasks', methods=['GET'])
 @login_required
 def get_organisations_with_tasks():

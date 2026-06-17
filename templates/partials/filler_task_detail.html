@@ -1,0 +1,110 @@
+{% if task %}
+<div class="mb-3">
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+            <div class="fw-bold">{{ task.service_code }}</div>
+            <div class="text-muted small">Task {{ task.id[:8] }}…</div>
+        </div>
+        {% set s = task.status %}
+        {% if s == 'completed' %}
+            <span class="badge bg-success fs-6">{{ s }}</span>
+        {% elif s in ('rejected', 'cancelled', 'failed') %}
+            <span class="badge bg-danger fs-6">{{ s }}</span>
+        {% elif s == 'in-progress' %}
+            <span class="badge bg-warning text-dark fs-6">{{ s }}</span>
+        {% elif s == 'accepted' %}
+            <span class="badge bg-primary fs-6">{{ s }}</span>
+        {% elif s == 'received' %}
+            <span class="badge bg-info text-dark fs-6">{{ s }}</span>
+        {% elif s == 'on-hold' %}
+            <span class="badge bg-light text-dark border fs-6">{{ s }}</span>
+        {% else %}
+            <span class="badge bg-secondary fs-6">{{ s }}</span>
+        {% endif %}
+    </div>
+
+    <table class="table table-sm table-borderless mb-3" style="font-size:0.85em;">
+        <tr><th class="text-muted fw-normal w-35">Patient</th><td>{{ task.patient_display or task.patient_ref }}</td></tr>
+        <tr><th class="text-muted fw-normal">Priority</th><td>{{ task.priority | capitalize }}</td></tr>
+        <tr><th class="text-muted fw-normal">Requester</th><td>{{ task.requester }}</td></tr>
+        {% if task.performer %}<tr><th class="text-muted fw-normal">Referred to</th><td>{{ task.performer }}</td></tr>{% endif %}
+        {% if task.reason %}<tr><th class="text-muted fw-normal">Indication</th><td>{{ task.reason }}</td></tr>{% endif %}
+        <tr><th class="text-muted fw-normal">Authored</th><td>{{ task.authored_on[:19].replace('T',' ') if task.authored_on else '—' }}</td></tr>
+        {% if task.status_reason %}<tr><th class="text-muted fw-normal">Status reason</th><td class="text-danger">{{ task.status_reason }}</td></tr>{% endif %}
+    </table>
+
+    {% if task.clinical_narrative %}
+    <div class="mb-3">
+        <div class="fw-semibold mb-1" style="font-size:0.85em;">Clinical Context</div>
+        <div class="border rounded p-2 bg-light" style="font-size:0.82em; white-space:pre-wrap; max-height:120px; overflow-y:auto;">{{ task.clinical_narrative }}</div>
+    </div>
+    {% endif %}
+
+    {% if task.summary_url %}
+    <div class="mb-3">
+        <div class="fw-semibold mb-1" style="font-size:0.85em;">AU Patient Summary</div>
+        <a href="{{ task.summary_url }}" target="_blank" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-external-link-alt me-1"></i> Fetch Patient Summary
+        </a>
+        <div class="text-muted mt-1" style="font-size:0.75em;">{{ task.summary_url }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Status Action Buttons -->
+{% if task.status not in ('completed', 'rejected', 'cancelled', 'failed') %}
+<div class="border-top pt-3">
+    <div class="fw-semibold mb-2" style="font-size:0.85em;">Update Status</div>
+    <div class="d-flex flex-wrap gap-2">
+        {% if task.status in ('requested', 'received') %}
+        <button class="btn btn-primary btn-sm"
+                onclick="updateStatus('{{ task.id }}', 'accepted')">
+            <i class="fas fa-check me-1"></i> Accept
+        </button>
+        {% endif %}
+        {% if task.status == 'accepted' %}
+        <button class="btn btn-warning btn-sm text-dark"
+                onclick="updateStatus('{{ task.id }}', 'in-progress')">
+            <i class="fas fa-play me-1"></i> Begin
+        </button>
+        {% endif %}
+        {% if task.status == 'in-progress' %}
+        <button class="btn btn-success btn-sm"
+                onclick="updateStatus('{{ task.id }}', 'completed')">
+            <i class="fas fa-flag-checkered me-1"></i> Complete
+        </button>
+        <button class="btn btn-outline-secondary btn-sm"
+                onclick="updateStatus('{{ task.id }}', 'on-hold')">
+            <i class="fas fa-pause me-1"></i> On Hold
+        </button>
+        {% endif %}
+        {% if task.status == 'on-hold' %}
+        <button class="btn btn-warning btn-sm text-dark"
+                onclick="updateStatus('{{ task.id }}', 'in-progress')">
+            <i class="fas fa-play me-1"></i> Resume
+        </button>
+        {% endif %}
+        {% if task.status not in ('completed',) %}
+        <button class="btn btn-outline-danger btn-sm"
+                onclick="updateStatus('{{ task.id }}', 'rejected')">
+            <i class="fas fa-times me-1"></i> Reject
+        </button>
+        <button class="btn btn-outline-secondary btn-sm"
+                onclick="updateStatus('{{ task.id }}', 'cancelled')">
+            <i class="fas fa-ban me-1"></i> Cancel
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="text-muted small border-top pt-2 mt-2">
+    <i class="fas fa-lock me-1"></i> This referral is {{ task.status }} — no further status changes.
+</div>
+{% endif %}
+
+{% else %}
+<div class="text-muted text-center py-5">
+    <i class="fas fa-exclamation-triangle fa-2x mb-3 d-block opacity-25"></i>
+    Could not load task details.
+</div>
+{% endif %}
