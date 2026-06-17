@@ -114,11 +114,17 @@
                     onclick="loadAllPatientData('{{ patient.id }}')">
                     Show Patient Summary
                 </button>
-                <button 
+                <button
                     class="btn btn-outline-success"
                     data-bs-toggle="modal"
                     data-bs-target="#createDiagnosticRequestModal">
                     Create Diagnostic Request
+                </button>
+                <button
+                    class="btn btn-outline-warning"
+                    data-bs-toggle="modal"
+                    data-bs-target="#createReferralModal">
+                    <i class="fas fa-share-square me-1"></i> New Referral
                 </button>
             </div>
 
@@ -302,6 +308,7 @@
 </div>
 
 {% include "diag_request.html" %}
+{% include "referral_form.html" %}
 
 <!-- Mermaid modal is injected into document.body by JS to avoid nesting inside diag_request modal -->
 

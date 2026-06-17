@@ -13,6 +13,7 @@ from urllib.parse import urlencode, urlparse, parse_qs
 from fhirpathpy import evaluate
 from fhirutils import fhir_get as _original_fhir_get, format_fhir_date, get_text_display, find_category, get_form_data
 from bundler import create_request_bundle
+from referral_bundler import create_referral_bundle
 from fhir_parser import extract_resources
 from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
@@ -1649,6 +1650,19 @@ def create_diagnostic_request_bundle(patient_id):
     bundle = create_request_bundle(form_data=form_data, fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials())
     bundle_json = json.dumps(bundle, indent=2)
     return render_template('partials/json_textarea.html', bundle_json=bundle_json), 200
+
+
+@app.route('/fhir/referral/bundler/<patient_id>', methods=['POST'])
+def create_referral_bundle_route(patient_id):
+    form_data = get_form_data(request)
+    form_data['patient_id'] = patient_id
+    logging.info(f"Referral form data: {json.dumps(form_data, indent=2)}")
+    bundle = create_referral_bundle(
+        form_data=form_data,
+        fhir_server_url=get_fhir_server_url(),
+        auth_credentials=get_fhir_auth_credentials(),
+    )
+    return render_template('partials/json_textarea.html', bundle_json=json.dumps(bundle, indent=2)), 200
 
 
 @app.route('/fhir/bundle/submit', methods=['POST'])

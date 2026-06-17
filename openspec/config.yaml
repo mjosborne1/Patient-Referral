@@ -1,0 +1,113 @@
+schema: spec-driven
+
+context: |
+  ## Project: Patient Referral Demo — AU eRequest/eReferral Connected Care Scenario
+
+  ### Purpose
+  Patient Referral Demo is a Flask-based web application demonstrating the full
+  AU eRequest/eReferral workflow for the Sparked Connected Testing Event (Scenario 1, 8 July 2026).
+  It acts as both a **Placer** (GP / requesting system) and a **Patient** viewer, showing:
+  - Provider lookup via Health Connect Australia Provider Directory
+  - eReferral bundle creation (ServiceRequest + Task + DocumentReference) posted to an AU
+    eRequesting FHIR server
+  - AU Patient Summary attachment as supporting information
+  - Task status lifecycle tracking (requested → accepted → in-progress → completed)
+  - A Filler/specialist view that receives referrals and updates Task status
+
+  The app is repurposed from the Patient Dashboard repo (mjosborne1/Patient-Dashboard) and retains
+  its diagnostic-request and bundle-visualisation capabilities alongside the new referral workflow.
+
+  ### Tech Stack
+  - **Language:** Python 3.x
+  - **Web framework:** Flask 3.0.3
+  - **Frontend:** HTMX (partial page updates), Bootstrap 5, Mermaid.js v10 (SVG diagrams)
+  - **FHIR:** fhirclient 4.3.1, fhirpathpy 2.0.2
+  - **Auth:** Flask-Login (mock auto-login), optional Bearer token support via request headers
+  - **Containerisation:** Docker (single-stage), Gunicorn for production
+  - **Config:** python-dotenv (`.env` file or environment variables)
+
+  ### Key Modules
+  - **app.py** — Flask routes and all endpoint logic
+  - **bundler.py** — Constructs AU eRequesting FHIR bundles (diagnostic requests + eReferrals)
+  - **referral_bundler.py** — (planned) Builds eReferral bundles: ServiceRequest + Task +
+    DocumentReference (clinical context) + optional Patient Summary reference
+  - **provider_directory.py** — (planned) Wraps HC Provider Directory FHIR API calls
+  - **fhir_parser.py** — Extracts typed resources from raw FHIR bundles (~550 lines)
+  - **graph_builder.py** — Builds a resource reference graph from parsed resources
+  - **mermaid_generator.py** — Converts resource graphs to Mermaid flowchart syntax
+  - **fhirutils.py** — Shared FHIR helper utilities
+
+  ### Configuration
+  `.env` (never committed) holds:
+  - `FHIR_SERVER`, `FHIR_USERNAME`, `FHIR_PASSWORD` — AU eRequesting FHIR server
+  - `PD_SERVER` — Health Connect Australia Provider Directory base URL (planned)
+  `.env.example` is the committed template.
+
+  ### IGs in Scope (Scenario 1)
+  - **AU eRequesting** — Placer, Filler, Patient roles
+  - **Health Connect Australia Provider Directory** — HC PD Requester role
+  - **AU Patient Summary** — PS Producer / PS Consumer
+  - **AU Core** — baseline patient/practitioner resources
+
+  ### Key FHIR Resource Pattern (eReferral)
+  ```
+  ServiceRequest (eReferral)      ← what is being requested
+      └── Task (Diagnostic Request)   ← fulfilment tracking (requested→accepted→completed)
+  Supporting:
+      DocumentReference (clinicalContext, LOINC 107903-7, text/plain)
+      DocumentReference or Bundle ref (AU Patient Summary — supportingInfo)
+      CommunicationRequest CopyTo    ← copy to another provider
+  ```
+
+  ### Data Flow: Bundle Visualisation
+  Bundle JSON → `fhir_parser.extract_resources()` → `graph_builder.build_graph()` →
+  `mermaid_generator.generate_mermaid()` → `POST /bundle/mermaid` → Mermaid.js renders SVG
+
+  ### Data Flow: Diagnostic Request (retained)
+  Order set selection + patient context → `bundler.py` → AU eRequesting FHIR Bundle JSON →
+  sent to FHIR server or downloaded
+
+  ### Data Flow: eReferral (planned)
+  Provider search → specialist selection + patient context + clinical narrative →
+  `referral_bundler.py` → eReferral Bundle → `POST [SRV]/` (transaction) →
+  Task status displayed on patient detail page
+
+  ### Key Screens / Routes (existing + planned)
+  - `GET /` — Patient list with search and filtering
+  - `GET /patient/<id>` — Patient detail: demographics, meds, allergies, results, procedures
+  - `GET /patient/<id>/lab-results` — Formatted lab results panel
+  - `GET /patient/<id>/diag-request` — Diagnostic request form (order set selection)
+  - `GET /patient/<id>/referral` — (planned) eReferral form: provider lookup, clinical narrative
+  - `GET /patient/<id>/referrals` — (planned) List submitted referrals and Task status
+  - `GET /filler` — (planned) Specialist/filler dashboard: incoming referrals, update Task status
+  - `POST /bundle/mermaid` — Render FHIR bundle as Mermaid SVG
+  - `GET /patient/<id>/summary` — $summary bundle retrieval and display
+  - `GET /settings` — FHIR server selection and auth configuration
+  - `GET /stats` — Patient demographics statistics
+  - `GET /provider-search` — (planned) Search HC Provider Directory
+
+  ### Auth
+  Flask-Login with a single mock user (auto-login in dev). Bearer token forwarded from request
+  headers to the FHIR server when present. No user database or OIDC integration.
+
+  ### Testing
+  40+ pytest test files under `tests/`, covering auth, specimens, bundles, dropdowns,
+  diagnostic workflows, and stats. New referral bundle tests to be added under `tests/referral/`.
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Keep proposals focused on what the change enables for users, not just technical details
+    - Include explicit Non-goals to prevent scope creep
+    - Note which Scenario 1 workflow step(s) the change addresses (① provider lookup, ② POST
+      request, ③ GET filler, ④ PUT Task status, ⑤ GET placer monitor, ⑥ GET patient view)
+    - Note any impact on the FHIR integration, bundle structure, or IGs in scope
+  design:
+    - Show before/after for any changes to the bundle pipeline or FHIR resource handling
+    - Document any new environment variables or `.env` keys
+    - Include Mermaid diagrams where they help clarify data flow
+    - Reference the relevant AU eRequesting / AU Core profile by canonical URL where possible
+  tasks:
+    - Separate backend (Flask routes, bundler, parser) from frontend (templates, HTMX) task groups
+    - Include a smoke-test task for any new route or bundle type
+    - Tag each task with the Scenario 1 workflow step it enables
