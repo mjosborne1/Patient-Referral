@@ -27,19 +27,87 @@
                 <h6 class="fw-bold border-bottom pb-1 mb-3 text-primary">
                     <i class="fas fa-user-md me-1"></i> Referred-to Specialist
                     <small class="text-muted fw-normal ms-2" style="font-size:0.75em;">
-                        (Provider Directory search coming in v0.2)
+                        HC Provider Directory
                     </small>
                 </h6>
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label for="performerName" class="form-label">Specialist / Practitioner Name</label>
-                        <input type="text" class="form-control" id="performerName" name="performer_name"
-                               placeholder="e.g. Dr Jane Smith">
+
+                <!-- Search controls -->
+                <div class="row g-2 mb-2 align-items-end">
+                    <div class="col-md-4">
+                        <label for="pdSearchName" class="form-label form-label-sm">Organisation name</label>
+                        <input type="text" class="form-control form-control-sm" id="pdSearchName"
+                               placeholder="e.g. City Cardiology">
                     </div>
-                    <div class="col-md-6">
-                        <label for="performerOrg" class="form-label">Organisation / Service</label>
-                        <input type="text" class="form-control" id="performerOrg" name="performer_org"
-                               placeholder="e.g. City Cardiology Clinic">
+                    <div class="col-md-3">
+                        <label for="pdSearchSpecialty" class="form-label form-label-sm">Specialty</label>
+                        <input type="text" class="form-control form-control-sm" id="pdSearchSpecialty"
+                               placeholder="e.g. Cardiology">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="pdSearchSuburb" class="form-label form-label-sm">Suburb / City</label>
+                        <input type="text" class="form-control form-control-sm" id="pdSearchSuburb"
+                               placeholder="e.g. Melbourne">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm w-100"
+                                id="pdSearchBtn"
+                                hx-get="/provider-search"
+                                hx-target="#pdResults"
+                                hx-swap="innerHTML"
+                                hx-indicator="#pdSpinner"
+                                hx-include="#pdSearchName,#pdSearchSuburb,#pdSearchSpecialty"
+                                hx-params="*">
+                            <span id="pdSpinner" class="htmx-indicator spinner-border spinner-border-sm me-1" role="status"></span>
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results list (HTMX target) -->
+                <div id="pdResults"
+                     class="border rounded mb-3"
+                     style="max-height:180px; overflow-y:auto; min-height:36px; background:#f8f9fa;">
+                    <div class="text-muted small px-2 py-2">
+                        Search the HC Provider Directory above, or enter details manually below.
+                    </div>
+                </div>
+
+                <!-- Selected provider badge -->
+                <div id="pdSelectedBadge" class="mb-3 d-none">
+                    <span class="badge bg-success fs-6 fw-normal py-2 px-3">
+                        <i class="fas fa-check-circle me-1"></i>
+                        <span id="pdSelectedLabel"></span>
+                    </span>
+                    <button type="button" class="btn btn-sm btn-link text-danger ms-2 p-0"
+                            onclick="clearSelectedProvider()">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+
+                <!-- Hidden values submitted with the referral bundle -->
+                <input type="hidden" id="performerName" name="performer_name" value="">
+                <input type="hidden" id="performerOrg"  name="performer_org"  value="">
+                <input type="hidden" id="performerRef"  name="performer_reference" value="">
+
+                <!-- Manual override (shown when no provider selected) -->
+                <div id="pdManualEntry">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label for="pdManualName" class="form-label form-label-sm text-muted">
+                                Or enter manually — Practitioner / Service name
+                            </label>
+                            <input type="text" class="form-control form-control-sm" id="pdManualName"
+                                   placeholder="e.g. Dr Jane Smith"
+                                   oninput="syncManualProvider(this, 'performerName')">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="pdManualOrg" class="form-label form-label-sm text-muted">
+                                Organisation / Service
+                            </label>
+                            <input type="text" class="form-control form-control-sm" id="pdManualOrg"
+                                   placeholder="e.g. City Cardiology Clinic"
+                                   oninput="syncManualProvider(this, 'performerOrg')">
+                        </div>
                     </div>
                 </div>
 
@@ -158,5 +226,46 @@ document.getElementById('referralForm').addEventListener('htmx:afterRequest', fu
 // Reset form when modal opens
 document.getElementById('createReferralModal').addEventListener('show.bs.modal', function() {
     document.getElementById('referralForm').reset();
+    clearSelectedProvider();
+    document.getElementById('pdResults').innerHTML =
+        '<div class="text-muted small px-2 py-2">Search the HC Provider Directory above, or enter details manually below.</div>';
 });
+
+// Called when user clicks a result row from provider_results.html partial
+function selectProvider(name, org, reference, specialty) {
+    document.getElementById('performerName').value = name || '';
+    document.getElementById('performerOrg').value  = org  || '';
+    document.getElementById('performerRef').value  = reference || '';
+
+    // Populate specialty field if empty
+    var specEl = document.getElementById('specialtyDisplay');
+    if (specEl && !specEl.value && specialty) {
+        specEl.value = specialty;
+    }
+
+    // Show badge
+    document.getElementById('pdSelectedLabel').textContent = name + (org ? ' — ' + org : '');
+    document.getElementById('pdSelectedBadge').classList.remove('d-none');
+
+    // Hide manual entry and clear its values
+    document.getElementById('pdManualEntry').classList.add('d-none');
+    document.getElementById('pdManualName').value = '';
+    document.getElementById('pdManualOrg').value  = '';
+
+    // Collapse results list
+    document.getElementById('pdResults').innerHTML = '';
+}
+
+function clearSelectedProvider() {
+    document.getElementById('performerName').value = '';
+    document.getElementById('performerOrg').value  = '';
+    document.getElementById('performerRef').value  = '';
+    document.getElementById('pdSelectedBadge').classList.add('d-none');
+    document.getElementById('pdManualEntry').classList.remove('d-none');
+}
+
+// Keep hidden inputs in sync with manual entry fields
+function syncManualProvider(input, targetId) {
+    document.getElementById(targetId).value = input.value;
+}
 </script>

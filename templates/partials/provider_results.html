@@ -1,0 +1,46 @@
+{% if providers %}
+<ul class="list-group list-group-flush" id="providerResultList">
+    {% for p in providers %}
+    <li class="list-group-item list-group-item-action py-2 px-3"
+        style="cursor:pointer;"
+        onclick="selectProvider(
+            {{ p.name | tojson }},
+            {{ p.org | tojson }},
+            {{ p.reference | tojson }},
+            {{ p.specialty | tojson }}
+        )">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="fw-semibold">{{ p.name }}</div>
+                {% if p.specialty %}
+                <small class="text-muted">{{ p.specialty }}</small>
+                {% endif %}
+                {% if p.org and p.org != p.name %}
+                <div class="text-muted" style="font-size:0.8em;">{{ p.org }}</div>
+                {% endif %}
+            </div>
+            <div class="text-end">
+                <span class="badge bg-secondary">{{ p.resource_type }}</span>
+                {% if p.address %}
+                <div class="text-muted mt-1" style="font-size:0.75em;">{{ p.address }}</div>
+                {% endif %}
+                {% if p.hpio %}
+                <div class="text-muted" style="font-size:0.7em;">HPI-O: {{ p.hpio }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% elif pd_configured %}
+<div class="text-muted small px-1 py-2">
+    <i class="fas fa-search me-1"></i> No results found — try a broader search term.
+</div>
+{% else %}
+<div class="alert alert-warning py-2 mb-0" style="font-size:0.85em;">
+    <i class="fas fa-exclamation-triangle me-1"></i>
+    <strong>PD_SERVER not configured.</strong>
+    Set <code>PD_SERVER</code> in <code>.env</code> to enable live Provider Directory search.
+    You can still enter provider details manually below.
+</div>
+{% endif %}

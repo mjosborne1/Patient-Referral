@@ -14,6 +14,7 @@ from fhirpathpy import evaluate
 from fhirutils import fhir_get as _original_fhir_get, format_fhir_date, get_text_display, find_category, get_form_data
 from bundler import create_request_bundle
 from referral_bundler import create_referral_bundle
+from provider_directory import search_providers
 from fhir_parser import extract_resources
 from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
@@ -1650,6 +1651,21 @@ def create_diagnostic_request_bundle(patient_id):
     bundle = create_request_bundle(form_data=form_data, fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials())
     bundle_json = json.dumps(bundle, indent=2)
     return render_template('partials/json_textarea.html', bundle_json=bundle_json), 200
+
+
+@app.route('/provider-search', methods=['GET'])
+def provider_search():
+    """HTMX partial: search HC Provider Directory and return a list of clickable result rows."""
+    name = request.args.get('pdSearchName', '').strip()
+    specialty = request.args.get('pdSearchSpecialty', '').strip()
+    suburb = request.args.get('pdSearchSuburb', '').strip()
+    pd_server = os.environ.get('PD_SERVER', '').rstrip('/')
+    providers = search_providers(name=name, specialty=specialty, suburb=suburb)
+    return render_template(
+        'partials/provider_results.html',
+        providers=providers,
+        pd_configured=bool(pd_server),
+    ), 200
 
 
 @app.route('/fhir/referral/bundler/<patient_id>', methods=['POST'])
