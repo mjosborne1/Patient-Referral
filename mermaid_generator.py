@@ -2,7 +2,7 @@
 Mermaid Diagram Generator Module
 
 Converts FHIR resource graphs to Mermaid flowchart syntax.
-Adapted from fhir-bundle-viz for use in Patient Dashboard.
+Adapted from fhir-bundle-viz for use in Patient Referrals.
 """
 
 import re

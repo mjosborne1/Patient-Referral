@@ -1,6 +1,6 @@
-# Patient Dashboard Test Suite
+# Patient Referrals Test Suite
 
-This folder contains all test files and debugging utilities for the Patient Dashboard application.
+This folder contains all test files and debugging utilities for the Patient Referrals application.
 
 ## File Organization
 

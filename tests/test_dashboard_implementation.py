@@ -6,7 +6,7 @@ import sys
 import os
 
 # Add the project directory to Python path
-sys.path.insert(0, '/Users/osb074/Development/tools/python/Patient-Dashboard')
+sys.path.insert(0, '/Users/osb074/Development/tools/python/Patient-Referral')
 
 try:
     import app

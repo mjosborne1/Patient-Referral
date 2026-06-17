@@ -7,7 +7,7 @@ import sys
 import os
 
 # Add the project root to Python path
-sys.path.append('/Users/osb074/Development/tools/python/Patient-Dashboard')
+sys.path.append('/Users/osb074/Development/tools/python/Patient-Referral')
 
 # Import required modules
 from fhirutils import fhir_get

@@ -2,7 +2,7 @@
 FHIR Bundle Parser Module
 
 Handles parsing of FHIR Bundle dictionaries and extraction of resources and their codes.
-Adapted from fhir-bundle-viz for use in Patient Dashboard.
+Adapted from fhir-bundle-viz for use in Patient Referrals.
 """
 
 import json

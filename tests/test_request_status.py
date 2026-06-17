@@ -8,7 +8,7 @@ import os
 import json
 
 # Add the project root to Python path
-sys.path.append('/Users/osb074/Development/tools/python/Patient-Dashboard')
+sys.path.append('/Users/osb074/Development/tools/python/Patient-Referral')
 
 # Set flag to prevent Flask app from running when importing
 os.environ['TESTING'] = 'true'

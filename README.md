@@ -1,6 +1,6 @@
-# 🏥 FHIR Patient Dashboard
+# 🏥 Patient Referrals
 
-A modern Flask app for exploring patient data, retreiving a Patient Summary and creating Service Request bundles from a FHIR API, using [HTMX](https://htmx.org/) for seamless interactivity and [Bootstrap 5](https://getbootstrap.com/) for responsive design.
+A Flask demo app for the **Sparked Connected Testing Event — Scenario 1 (eRequest/eReferral Workflow)**, built on top of the FHIR Patient Dashboard starter. Demonstrates provider lookup, eReferral bundle creation, AU Patient Summary attachment, Task status lifecycle, and a Filler/specialist view — using [HTMX](https://htmx.org/) for seamless interactivity and [Bootstrap 5](https://getbootstrap.com/) for responsive design.
 
 ---
 

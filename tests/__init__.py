@@ -1,1 +1,1 @@
-"""Test suite for Patient Dashboard application."""
+"""Test suite for Patient Referrals application."""

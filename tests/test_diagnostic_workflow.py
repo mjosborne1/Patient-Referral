@@ -75,7 +75,7 @@ def test_server_connection():
         return False
 
 if __name__ == "__main__":
-    print("🩺 Patient Dashboard - Diagnostic Request Workflow Test\n")
+    print("🩺 Patient Referrals - Diagnostic Request Workflow Test\n")
     
     # Test server connection first
     if test_server_connection():

@@ -6,7 +6,7 @@ import requests
 from dotenv import load_dotenv
 
 # Add the project directory to Python path
-sys.path.insert(0, '/Users/osb074/Development/tools/python/Patient-Dashboard')
+sys.path.insert(0, '/Users/osb074/Development/tools/python/Patient-Referral')
 
 def get_server_info():
     load_dotenv()

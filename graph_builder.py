@@ -2,7 +2,7 @@
 Graph Builder Module
 
 Constructs a directed graph from FHIR resources showing relationships between them.
-Adapted from fhir-bundle-viz for use in Patient Dashboard.
+Adapted from fhir-bundle-viz for use in Patient Referrals.
 """
 
 from typing import Dict, List, Any, Set, Tuple, Optional
