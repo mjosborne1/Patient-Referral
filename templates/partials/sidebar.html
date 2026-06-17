@@ -1,4 +1,5 @@
 <!-- Shared Sidebar Navigation -->
+{% set is_standalone = active_page in ('airport', 'filler') %}
 <nav class="sidebar">
     <div class="position-sticky">
         <div class="sidebar-logo py-3 px-2 mb-2 d-flex justify-content-center align-items-center">
@@ -6,7 +7,7 @@
         </div>
         <ul class="nav flex-column">
             <li class="nav-item">
-                {% if active_page == 'airport' %}
+                {% if is_standalone %}
                 <a class="nav-link" href="/">
                 {% else %}
                 <a class="nav-link{% if active_page == 'patients' %} active{% endif %}" hx-get="/fhir/Patients" hx-target="#content" hx-indicator="this" hx-swap="innerHTML transition:true">
@@ -22,7 +23,7 @@
                 </a>
             </li>
             <li class="nav-item">
-                {% if active_page == 'airport' %}
+                {% if is_standalone %}
                 <a class="nav-link" href="/">
                 {% else %}
                 <a class="nav-link{% if active_page == 'stats' %} active{% endif %}" hx-get="/fhir/Demographics" hx-target="#content" hx-indicator="this" hx-swap="innerHTML transition:true">
@@ -32,7 +33,7 @@
                 </a>
             </li>
             <li class="nav-item">
-                {% if active_page == 'airport' %}
+                {% if is_standalone %}
                 <a class="nav-link" href="/">
                 {% else %}
                 <a class="nav-link{% if active_page == 'insights' %} active{% endif %}" hx-get="/fhir/Dashboard" hx-target="#content" hx-indicator="this" hx-swap="innerHTML transition:true">
@@ -42,12 +43,20 @@
                 </a>
             </li>
             <li class="nav-item">
+                {% if is_standalone %}
+                <a class="nav-link text-muted" href="/" title="Available on main page">
+                {% else %}
                 <a class="nav-link" href="#" onclick="openOrderSetsModal(); return false;" title="Common Order Sets">
+                {% endif %}
                     <i class="fas fa-layer-group me-1"></i><span> Order Sets</span>
                 </a>
             </li>
             <li class="nav-item">
+                {% if is_standalone %}
+                <a class="nav-link text-muted" href="/" title="Available on main page">
+                {% else %}
                 <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#fhirServerModal">
+                {% endif %}
                     <i class="fas fa-cog me-1"></i><span> Settings</span>
                 </a>
             </li>
