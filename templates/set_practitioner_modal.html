@@ -1,0 +1,129 @@
+<!-- Set Requesting Practitioner Modal -->
+<div class="modal fade" id="setPractitionerModal" tabindex="-1"
+     aria-labelledby="setPractitionerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="setPractitionerModalLabel">
+                    <i class="fas fa-user-md me-2"></i> Set Ordering Practitioner
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Select the practitioner in whose name all orders and referrals will be sent.
+                    This setting persists for your session.
+                </p>
+
+                <!-- Organisation -->
+                <div class="mb-3">
+                    <label for="spOrgList" class="form-label fw-semibold">Organisation</label>
+                    <div id="spOrgContainer"
+                         hx-get="/fhir/RequesterOrganisations?for=sp"
+                         hx-trigger="load"
+                         hx-swap="innerHTML">
+                        <div class="text-muted small">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            Loading organisations…
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Practitioner -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Practitioner</label>
+                    <div id="spRequesterContainer">
+                        <select id="spRequesterList" class="form-select" disabled>
+                            <option value="">Select an organisation first…</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="spSetBtn" disabled
+                        onclick="spConfirm()">
+                    <i class="fas fa-check me-1"></i> Set as my practitioner
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var modal = document.getElementById('setPractitionerModal');
+    var setBtn = document.getElementById('spSetBtn');
+    var _spRoleId   = '';
+    var _spRoleName = '';
+    var _spOrgName  = '';
+
+    // Reset state when modal opens and reload orgs
+    modal.addEventListener('show.bs.modal', function () {
+        _spRoleId = _spRoleName = _spOrgName = '';
+        if (setBtn) setBtn.disabled = true;
+        // Reload org list each time (catches any new data)
+        htmx.ajax('GET', '/fhir/RequesterOrganisations?for=sp', {
+            target: '#spOrgContainer',
+            swap: 'innerHTML'
+        });
+        document.getElementById('spRequesterContainer').innerHTML =
+            '<select id="spRequesterList" class="form-select" disabled>' +
+            '<option value="">Select an organisation first…</option></select>';
+    });
+
+    // Capture org name when org changes (event delegation — #spOrgList gets swapped in)
+    document.getElementById('spOrgContainer').addEventListener('change', function (evt) {
+        if (evt.target.id === 'spOrgList') {
+            var opt = evt.target.options[evt.target.selectedIndex];
+            _spOrgName = opt ? opt.text.trim() : '';
+            _spRoleId = _spRoleName = '';
+            if (setBtn) setBtn.disabled = true;
+        }
+    });
+}());
+
+// Called by sp_requesters.html onchange
+function spOnRequesterChange(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    if (opt && opt.value) {
+        window._spRoleId   = opt.value;
+        window._spRoleName = (opt.getAttribute('data-name') || opt.text.replace(/^[★\s]+/, '').split(' — ')[0]).trim();
+        document.getElementById('spSetBtn').disabled = false;
+    } else {
+        window._spRoleId = window._spRoleName = '';
+        document.getElementById('spSetBtn').disabled = true;
+    }
+}
+
+function spConfirm() {
+    if (!window._spRoleId || !window._spRoleName) return;
+    var orgEl = document.getElementById('spOrgList');
+    var orgName = orgEl ? orgEl.options[orgEl.selectedIndex].text.trim() : window._spOrgName || '';
+
+    fetch('/session/requesting-practitioner', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+            role_id:   window._spRoleId,
+            role_name: window._spRoleName,
+            role_org:  orgName
+        })
+    }).then(function () {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('setPractitionerModal')).hide();
+        // Update the settings modal display so it reflects the new practitioner
+        var label = document.getElementById('settingsPracName');
+        if (label) {
+            label.textContent = window._spRoleName + (orgName ? ' — ' + orgName : '');
+            label.className = 'text-body';
+        }
+    });
+}
+
+function openChangePractitioner() {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('fhirServerModal')).hide();
+    setTimeout(function () {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('setPractitionerModal')).show();
+    }, 300);
+}
+</script>

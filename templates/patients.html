@@ -109,20 +109,16 @@
         <div class="pagination-info">
             <span id="pagination-info-text" class="text-muted"></span>
         </div>
-        <ul class="pagination pagination-sm">
+        <ul class="pagination pagination-sm" id="page-links">
             <li class="page-item" id="prev-page">
-                <button class="page-link" 
-                        onclick="previousPage()">
-                    <i class="fas fa-chevron-left"></i> Previous
+                <button class="page-link" onclick="previousPage()">
+                    <i class="fas fa-chevron-left"></i>
                 </button>
             </li>
-            <li class="page-item active" id="current-page">
-                <span class="page-link" id="current-page-number">1</span>
-            </li>
+            <!-- page number items injected here by updatePaginationControls() -->
             <li class="page-item" id="next-page">
-                <button class="page-link" 
-                        onclick="nextPage()">
-                    Next <i class="fas fa-chevron-right"></i>
+                <button class="page-link" onclick="nextPage()">
+                    <i class="fas fa-chevron-right"></i>
                 </button>
             </li>
         </ul>
@@ -284,51 +280,56 @@ function loadPage(page) {
 
 // Update pagination controls based on current state
 function updatePaginationControls(page, total, totalCount, perPage) {
-    // Check if pagination elements exist (we might not be on patients page)
-    const pageNumberEl = document.getElementById('current-page-number');
+    const paginationList = document.getElementById('page-links');
     const paginationInfoEl = document.getElementById('pagination-info-text');
-    const prevButton = document.getElementById('prev-page');
-    const nextButton = document.getElementById('next-page');
-    
-    if (!pageNumberEl || !paginationInfoEl || !prevButton || !nextButton) {
-        console.log('Pagination controls not found - skipping update');
+    const prevItem = document.getElementById('prev-page');
+    const nextItem = document.getElementById('next-page');
+
+    if (!paginationList || !paginationInfoEl || !prevItem || !nextItem) {
         return;
     }
-    
+
     currentPage = page || 1;
     totalPages = Math.max(1, total || 1);
     totalItems = totalCount || 0;
     itemsPerPage = perPage || 10;
-    
-    console.log('Updating pagination:', {currentPage, totalPages, totalItems, itemsPerPage});
-    
-    // Update page number display
-    pageNumberEl.textContent = currentPage;
-    
-    // Update info text
+
+    // Info text
     const startItem = totalItems > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0;
     const endItem = Math.min(currentPage * itemsPerPage, totalItems);
-    paginationInfoEl.textContent = 
-        `Showing ${startItem}-${endItem} of ${totalItems} patients`;
-    
-    // Enable/disable previous button
-    const prevButtonElement = prevButton.querySelector('button');
-    if (currentPage <= 1 || totalItems === 0) {
-        prevButton.classList.add('disabled');
-        if (prevButtonElement) prevButtonElement.disabled = true;
-    } else {
-        prevButton.classList.remove('disabled');
-        if (prevButtonElement) prevButtonElement.disabled = false;
+    paginationInfoEl.textContent = `Showing ${startItem}–${endItem} of ${totalItems} patients`;
+
+    // Remove old page-number items, rebuild one per page
+    paginationList.querySelectorAll('.page-num-item').forEach(el => el.remove());
+    for (var p = 1; p <= totalPages; p++) {
+        var li = document.createElement('li');
+        li.className = 'page-item page-num-item' + (p === currentPage ? ' active' : '');
+        if (p === currentPage) {
+            li.innerHTML = '<span class="page-link">' + p + '</span>';
+        } else {
+            li.innerHTML = '<button class="page-link" onclick="loadPage(' + p + ')">' + p + '</button>';
+        }
+        paginationList.insertBefore(li, nextItem);
     }
-    
-    // Enable/disable next button
-    const nextButtonElement = nextButton.querySelector('button');
-    if (currentPage >= totalPages || totalPages <= 1 || totalItems === 0) {
-        nextButton.classList.add('disabled');
-        if (nextButtonElement) nextButtonElement.disabled = true;
+
+    // Prev
+    var prevBtn = prevItem.querySelector('button');
+    if (currentPage <= 1 || totalItems === 0) {
+        prevItem.classList.add('disabled');
+        if (prevBtn) prevBtn.disabled = true;
     } else {
-        nextButton.classList.remove('disabled');
-        if (nextButtonElement) nextButtonElement.disabled = false;
+        prevItem.classList.remove('disabled');
+        if (prevBtn) prevBtn.disabled = false;
+    }
+
+    // Next
+    var nextBtn = nextItem.querySelector('button');
+    if (currentPage >= totalPages || totalPages <= 1 || totalItems === 0) {
+        nextItem.classList.add('disabled');
+        if (nextBtn) nextBtn.disabled = true;
+    } else {
+        nextItem.classList.remove('disabled');
+        if (nextBtn) nextBtn.disabled = false;
     }
 }
 

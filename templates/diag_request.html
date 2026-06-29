@@ -20,31 +20,6 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <!-- Requester Organisation Dropdown -->
-          <div class="mb-3" id="requesterOrgDropdownContainer">
-            <label for="requesterOrgList" class="form-label">Select Requesting Organisation</label>
-            <select class="form-select" id="requesterOrgList" name="requesterOrganisation" required
-                    hx-get="/fhir/RequesterOrganisations"
-                    hx-trigger="shown.bs.modal from:#createDiagnosticRequestModal"
-                    hx-target="#requesterOrgList"
-                    hx-swap="outerHTML">
-              <option value="">Select an organisation...</option>
-              <!-- Options will be loaded here by HTMX -->
-            </select>
-          </div>
-          <!-- Requester Dropdown -->
-          <div class="mb-3" id="requesterDropdownContainer">
-            <label for="requesterList" class="form-label">Select Requester</label>
-            <select class="form-select" id="requesterList" name="requester" required
-                    hx-get="/fhir/Requesters"
-                    hx-trigger="change from:#requesterOrgList"
-                    hx-include="#requesterOrgList"
-                    hx-target="#requesterList"
-                    hx-swap="outerHTML">
-              <option value="">Select a requesting practitioner ...</option>
-              <!-- Options will be loaded here by HTMX when organisation is selected -->
-            </select>
-          </div>
           <!-- get patient id from the session -->
           <input type="hidden" name="patient_id" value="{{ session.current_patient_id }}">    
           <!-- Diagnostic Request Category Radio Buttons -->
@@ -453,6 +428,8 @@
           </div>
         </div>  
         <!-- Add narative slider--> 
+
+        </div><!-- /modal-body -->
 
         <!-- Submit Request bundle-->
         <div class="modal-footer">

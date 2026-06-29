@@ -1,0 +1,1495 @@
+{
+  "resourceType": "Bundle",
+  "id": "694e85b7-48e6-4222-b889-98e8dd58d96e",
+  "type": "transaction",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:a7ef8206-a418-4c30-9400-2722d9aeb36c",
+      "request": {
+        "method": "GET",
+        "url": "PractitionerRole/generalpractitioner-guthridge-jarred"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:50f90ac2-f215-45ff-b6a1-8142fb534136",
+      "request": {
+        "method": "GET",
+        "url": "Organization/kioma-pathology"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:0a3f2fa4-2a45-4ec4-b863-a8fe9e5cdf83",
+      "resource": {
+        "resourceType": "Observation",
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/uv/ips/StructureDefinition/Observation-pregnancy-status-uv-ips"
+          ]
+        },
+        "id": "0a3f2fa4-2a45-4ec4-b863-a8fe9e5cdf83",
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "exam",
+                "display": "Exam"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "82810-3",
+              "display": "Pregnancy status"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "effectiveDateTime": "2026-03-12T07:38:00.242241+10:00",
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "77386006",
+              "display": "Pregnant"
+            }
+          ]
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Observation</h3></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Observation"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:83cedadc-32d6-47bf-a6b4-e4ec3a5719cd",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-clinicalcontext-documentreference"
+          ]
+        },
+        "id": "83cedadc-32d6-47bf-a6b4-e4ec3a5719cd",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "107903-7",
+              "display": "Clinical note"
+            }
+          ],
+          "text": "Clinical context"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "author": [
+          {
+            "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+          }
+        ],
+        "date": "2026-03-12T07:38:00.242315+10:00",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "text/plain",
+              "data": "R0RNIEZvbGxvd3Vw",
+              "title": "Clinical Context"
+            }
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>DocumentReference</h3><p><strong>Status:</strong> current</p><p><strong>Type:</strong> Clinical note</p><p><strong>Title:</strong> Clinical Context</p><p><strong>Content Type:</strong> text/plain</p><p><strong>Clinical Context:</strong></p><div style='border: 1px solid #ccc; padding: 10px; margin: 5px 0; background-color: #f9f9f9;'>GDM Followup</div></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "DocumentReference"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:1e878483-4ec1-412c-8f53-9cef89e1100e",
+      "resource": {
+        "resourceType": "Coverage",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-coverage"
+          ]
+        },
+        "id": "1e878483-4ec1-412c-8f53-9cef89e1100e",
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "code": "PUBLICPOL",
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode"
+            }
+          ],
+          "text": "Medicare"
+        },
+        "beneficiary": {
+          "reference": "Patient/belger-remedios"
+        },
+        "payor": [
+          {
+            "display": "Medicare"
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Coverage</h3><p><strong>Status:</strong> active</p><p><strong>Type:</strong> PUBLICPOL</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Coverage"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:aa075ac7-d8a9-49ca-9729-9a4cbfc22597",
+      "resource": {
+        "resourceType": "Encounter",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
+          ]
+        },
+        "id": "aa075ac7-d8a9-49ca-9729-9a4cbfc22597",
+        "status": "planned",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB",
+          "display": "ambulatory"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Encounter</h3><p><strong>Status:</strong> planned</p><p><strong>Class:</strong> ambulatory</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Encounter"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:d270f49f-0737-47af-b5b8-a09de4728ce6",
+      "resource": {
+        "resourceType": "ServiceRequest",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-path"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-displaysequence",
+            "valueInteger": 1
+          },
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-fastingprecondition",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "16985007",
+                  "display": "Fasting"
+                }
+              ]
+            }
+          }
+        ],
+        "id": "d270f49f-0737-47af-b5b8-a09de4728ce6",
+        "identifier": [
+          {
+            "use": "usual",
+            "type": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                  "code": "PLAC",
+                  "display": "Placer Identifier"
+                }
+              ]
+            },
+            "system": "http://myclinic.example.org.au/identifier",
+            "value": "26-867099-1"
+          }
+        ],
+        "status": "active",
+        "intent": "order",
+        "requisition": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "108252007",
+                "display": "Laboratory procedure"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "252150008",
+              "display": "Fasting lipid profile"
+            }
+          ],
+          "text": "Fasting Lipids"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "encounter": {
+          "reference": "urn:uuid:aa075ac7-d8a9-49ca-9729-9a4cbfc22597",
+          "type": "Encounter"
+        },
+        "authoredOn": "2026-03-12T07:38:00.242574+10:00",
+        "priority": "routine",
+        "insurance": [
+          {
+            "reference": "urn:uuid:1e878483-4ec1-412c-8f53-9cef89e1100e"
+          }
+        ],
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "performer": [
+          {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "11687002",
+                "display": "Gestational diabetes mellitus"
+              }
+            ],
+            "text": "Gestational diabetes mellitus"
+          }
+        ],
+        "supportingInfo": [
+          {
+            "reference": "urn:uuid:0a3f2fa4-2a45-4ec4-b863-a8fe9e5cdf83",
+            "display": "Pregnancy status"
+          },
+          {
+            "reference": "urn:uuid:83cedadc-32d6-47bf-a6b4-e4ec3a5719cd",
+            "display": "Clinical Context"
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>ServiceRequest</h3><p><strong>Status:</strong> active</p><p><strong>Intent:</strong> order</p><p><strong>Test:</strong> Fasting lipid profile</p><p><strong>Category:</strong> Laboratory procedure</p><p><strong>Sequence:</strong> 1</p><p><strong>Reasons:</strong> Gestational diabetes mellitus</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "ServiceRequest"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:82185b2f-5e35-43d4-98b9-b827607116ae",
+      "resource": {
+        "resourceType": "Task",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-task-diagnosticrequest"
+          ],
+          "tag": [
+            {
+              "system": "http://terminology.hl7.org.au/CodeSystem/resource-tag",
+              "code": "fulfilment-task"
+            }
+          ]
+        },
+        "id": "82185b2f-5e35-43d4-98b9-b827607116ae",
+        "groupIdentifier": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "requested",
+        "intent": "order",
+        "focus": {
+          "reference": "urn:uuid:d270f49f-0737-47af-b5b8-a09de4728ce6"
+        },
+        "priority": "routine",
+        "code": {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/CodeSystem/task-code",
+              "code": "fulfill"
+            }
+          ]
+        },
+        "for": {
+          "reference": "Patient/belger-remedios"
+        },
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "owner": {
+          "reference": "Organization/kioma-pathology",
+          "display": "Kioma Pathology"
+        },
+        "partOf": [
+          {
+            "reference": "urn:uuid:b9c24ae3-6f3f-4150-8185-1ca69a440f5e"
+          }
+        ],
+        "authoredOn": "2026-03-12T07:38:00.242637+10:00",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Task</h3><p><strong>Status:</strong> requested</p><p><strong>Intent:</strong> order</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Task"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:57181aaa-ad6a-4b33-8c2b-c51c157220c8",
+      "resource": {
+        "resourceType": "Encounter",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
+          ]
+        },
+        "id": "57181aaa-ad6a-4b33-8c2b-c51c157220c8",
+        "status": "planned",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB",
+          "display": "ambulatory"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Encounter</h3><p><strong>Status:</strong> planned</p><p><strong>Class:</strong> ambulatory</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Encounter"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:257bdd3a-d4d3-420c-a6f3-89d4a61753e1",
+      "resource": {
+        "resourceType": "ServiceRequest",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-path"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-displaysequence",
+            "valueInteger": 2
+          },
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-fastingprecondition",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "16985007",
+                  "display": "Fasting"
+                }
+              ]
+            }
+          }
+        ],
+        "id": "257bdd3a-d4d3-420c-a6f3-89d4a61753e1",
+        "identifier": [
+          {
+            "use": "usual",
+            "type": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                  "code": "PLAC",
+                  "display": "Placer Identifier"
+                }
+              ]
+            },
+            "system": "http://myclinic.example.org.au/identifier",
+            "value": "26-867099-2"
+          }
+        ],
+        "status": "active",
+        "intent": "order",
+        "requisition": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "108252007",
+                "display": "Laboratory procedure"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "43396009",
+              "display": "Haemoglobin A1c measurement"
+            }
+          ],
+          "text": "HbA1c"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "encounter": {
+          "reference": "urn:uuid:57181aaa-ad6a-4b33-8c2b-c51c157220c8",
+          "type": "Encounter"
+        },
+        "authoredOn": "2026-03-12T07:38:00.242766+10:00",
+        "priority": "routine",
+        "insurance": [
+          {
+            "reference": "urn:uuid:1e878483-4ec1-412c-8f53-9cef89e1100e"
+          }
+        ],
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "performer": [
+          {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "11687002",
+                "display": "Gestational diabetes mellitus"
+              }
+            ],
+            "text": "Gestational diabetes mellitus"
+          }
+        ],
+        "supportingInfo": [
+          {
+            "reference": "urn:uuid:0a3f2fa4-2a45-4ec4-b863-a8fe9e5cdf83",
+            "display": "Pregnancy status"
+          },
+          {
+            "reference": "urn:uuid:83cedadc-32d6-47bf-a6b4-e4ec3a5719cd",
+            "display": "Clinical Context"
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>ServiceRequest</h3><p><strong>Status:</strong> active</p><p><strong>Intent:</strong> order</p><p><strong>Test:</strong> Haemoglobin A1c measurement</p><p><strong>Category:</strong> Laboratory procedure</p><p><strong>Sequence:</strong> 2</p><p><strong>Reasons:</strong> Gestational diabetes mellitus</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "ServiceRequest"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a60dded8-53a6-431d-8432-fac63b700afc",
+      "resource": {
+        "resourceType": "Task",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-task-diagnosticrequest"
+          ],
+          "tag": [
+            {
+              "system": "http://terminology.hl7.org.au/CodeSystem/resource-tag",
+              "code": "fulfilment-task"
+            }
+          ]
+        },
+        "id": "a60dded8-53a6-431d-8432-fac63b700afc",
+        "groupIdentifier": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "requested",
+        "intent": "order",
+        "focus": {
+          "reference": "urn:uuid:257bdd3a-d4d3-420c-a6f3-89d4a61753e1"
+        },
+        "priority": "routine",
+        "code": {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/CodeSystem/task-code",
+              "code": "fulfill"
+            }
+          ]
+        },
+        "for": {
+          "reference": "Patient/belger-remedios"
+        },
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "owner": {
+          "reference": "Organization/kioma-pathology",
+          "display": "Kioma Pathology"
+        },
+        "partOf": [
+          {
+            "reference": "urn:uuid:b9c24ae3-6f3f-4150-8185-1ca69a440f5e"
+          }
+        ],
+        "authoredOn": "2026-03-12T07:38:00.242812+10:00",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Task</h3><p><strong>Status:</strong> requested</p><p><strong>Intent:</strong> order</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Task"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:92e814f5-01c1-4f90-bee8-02b87cd3ce95",
+      "resource": {
+        "resourceType": "Encounter",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
+          ]
+        },
+        "id": "92e814f5-01c1-4f90-bee8-02b87cd3ce95",
+        "status": "planned",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB",
+          "display": "ambulatory"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Encounter</h3><p><strong>Status:</strong> planned</p><p><strong>Class:</strong> ambulatory</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Encounter"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:88270779-636a-409b-9c06-c95cabbccfa5",
+      "resource": {
+        "resourceType": "ServiceRequest",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-path"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-displaysequence",
+            "valueInteger": 3
+          },
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-fastingprecondition",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "16985007",
+                  "display": "Fasting"
+                }
+              ]
+            }
+          }
+        ],
+        "id": "88270779-636a-409b-9c06-c95cabbccfa5",
+        "identifier": [
+          {
+            "use": "usual",
+            "type": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                  "code": "PLAC",
+                  "display": "Placer Identifier"
+                }
+              ]
+            },
+            "system": "http://myclinic.example.org.au/identifier",
+            "value": "26-867099-3"
+          }
+        ],
+        "status": "active",
+        "intent": "order",
+        "requisition": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "108252007",
+                "display": "Laboratory procedure"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "444164000",
+              "display": "Urea, electrolytes and creatinine measurement"
+            }
+          ],
+          "text": "UEC"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "encounter": {
+          "reference": "urn:uuid:92e814f5-01c1-4f90-bee8-02b87cd3ce95",
+          "type": "Encounter"
+        },
+        "authoredOn": "2026-03-12T07:38:00.242943+10:00",
+        "priority": "routine",
+        "insurance": [
+          {
+            "reference": "urn:uuid:1e878483-4ec1-412c-8f53-9cef89e1100e"
+          }
+        ],
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "performer": [
+          {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "11687002",
+                "display": "Gestational diabetes mellitus"
+              }
+            ],
+            "text": "Gestational diabetes mellitus"
+          }
+        ],
+        "supportingInfo": [
+          {
+            "reference": "urn:uuid:0a3f2fa4-2a45-4ec4-b863-a8fe9e5cdf83",
+            "display": "Pregnancy status"
+          },
+          {
+            "reference": "urn:uuid:83cedadc-32d6-47bf-a6b4-e4ec3a5719cd",
+            "display": "Clinical Context"
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>ServiceRequest</h3><p><strong>Status:</strong> active</p><p><strong>Intent:</strong> order</p><p><strong>Test:</strong> Urea, electrolytes and creatinine measurement</p><p><strong>Category:</strong> Laboratory procedure</p><p><strong>Sequence:</strong> 3</p><p><strong>Reasons:</strong> Gestational diabetes mellitus</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "ServiceRequest"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:b3555d20-4254-4a0d-be31-1a7b173b5a65",
+      "resource": {
+        "resourceType": "Task",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-task-diagnosticrequest"
+          ],
+          "tag": [
+            {
+              "system": "http://terminology.hl7.org.au/CodeSystem/resource-tag",
+              "code": "fulfilment-task"
+            }
+          ]
+        },
+        "id": "b3555d20-4254-4a0d-be31-1a7b173b5a65",
+        "groupIdentifier": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "requested",
+        "intent": "order",
+        "focus": {
+          "reference": "urn:uuid:88270779-636a-409b-9c06-c95cabbccfa5"
+        },
+        "priority": "routine",
+        "code": {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/CodeSystem/task-code",
+              "code": "fulfill"
+            }
+          ]
+        },
+        "for": {
+          "reference": "Patient/belger-remedios"
+        },
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "owner": {
+          "reference": "Organization/kioma-pathology",
+          "display": "Kioma Pathology"
+        },
+        "partOf": [
+          {
+            "reference": "urn:uuid:b9c24ae3-6f3f-4150-8185-1ca69a440f5e"
+          }
+        ],
+        "authoredOn": "2026-03-12T07:38:00.242983+10:00",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Task</h3><p><strong>Status:</strong> requested</p><p><strong>Intent:</strong> order</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Task"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:3721d159-c078-42d1-862e-f7a8ded3f2cc",
+      "resource": {
+        "resourceType": "Encounter",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
+          ]
+        },
+        "id": "3721d159-c078-42d1-862e-f7a8ded3f2cc",
+        "status": "planned",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB",
+          "display": "ambulatory"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Encounter</h3><p><strong>Status:</strong> planned</p><p><strong>Class:</strong> ambulatory</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Encounter"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:5047c481-2602-43b1-9928-7eba83a70b0c",
+      "resource": {
+        "resourceType": "ServiceRequest",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-path"
+          ]
+        },
+        "extension": [
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-displaysequence",
+            "valueInteger": 4
+          },
+          {
+            "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-fastingprecondition",
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://snomed.info/sct",
+                  "code": "16985007",
+                  "display": "Fasting"
+                }
+              ]
+            }
+          }
+        ],
+        "id": "5047c481-2602-43b1-9928-7eba83a70b0c",
+        "identifier": [
+          {
+            "use": "usual",
+            "type": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                  "code": "PLAC",
+                  "display": "Placer Identifier"
+                }
+              ]
+            },
+            "system": "http://myclinic.example.org.au/identifier",
+            "value": "26-867099-4"
+          }
+        ],
+        "status": "active",
+        "intent": "order",
+        "requisition": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "108252007",
+                "display": "Laboratory procedure"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "26604007",
+              "display": "Full blood count"
+            }
+          ],
+          "text": "FBC"
+        },
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "encounter": {
+          "reference": "urn:uuid:3721d159-c078-42d1-862e-f7a8ded3f2cc",
+          "type": "Encounter"
+        },
+        "authoredOn": "2026-03-12T07:38:00.243126+10:00",
+        "priority": "routine",
+        "insurance": [
+          {
+            "reference": "urn:uuid:1e878483-4ec1-412c-8f53-9cef89e1100e"
+          }
+        ],
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "performer": [
+          {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        ],
+        "reasonCode": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "11687002",
+                "display": "Gestational diabetes mellitus"
+              }
+            ],
+            "text": "Gestational diabetes mellitus"
+          }
+        ],
+        "supportingInfo": [
+          {
+            "reference": "urn:uuid:0a3f2fa4-2a45-4ec4-b863-a8fe9e5cdf83",
+            "display": "Pregnancy status"
+          },
+          {
+            "reference": "urn:uuid:83cedadc-32d6-47bf-a6b4-e4ec3a5719cd",
+            "display": "Clinical Context"
+          }
+        ],
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>ServiceRequest</h3><p><strong>Status:</strong> active</p><p><strong>Intent:</strong> order</p><p><strong>Test:</strong> Full blood count</p><p><strong>Category:</strong> Laboratory procedure</p><p><strong>Sequence:</strong> 4</p><p><strong>Reasons:</strong> Gestational diabetes mellitus</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "ServiceRequest"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:8206d87f-5eaa-4f76-82f4-d32ed5f81260",
+      "resource": {
+        "resourceType": "Task",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-task-diagnosticrequest"
+          ],
+          "tag": [
+            {
+              "system": "http://terminology.hl7.org.au/CodeSystem/resource-tag",
+              "code": "fulfilment-task"
+            }
+          ]
+        },
+        "id": "8206d87f-5eaa-4f76-82f4-d32ed5f81260",
+        "groupIdentifier": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "requested",
+        "intent": "order",
+        "focus": {
+          "reference": "urn:uuid:5047c481-2602-43b1-9928-7eba83a70b0c"
+        },
+        "priority": "routine",
+        "code": {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/CodeSystem/task-code",
+              "code": "fulfill"
+            }
+          ]
+        },
+        "for": {
+          "reference": "Patient/belger-remedios"
+        },
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "owner": {
+          "reference": "Organization/kioma-pathology",
+          "display": "Kioma Pathology"
+        },
+        "partOf": [
+          {
+            "reference": "urn:uuid:b9c24ae3-6f3f-4150-8185-1ca69a440f5e"
+          }
+        ],
+        "authoredOn": "2026-03-12T07:38:00.243159+10:00",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Task</h3><p><strong>Status:</strong> requested</p><p><strong>Intent:</strong> order</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Task"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:88704bad-8b54-4c62-bc75-c679f94e6700",
+      "resource": {
+        "resourceType": "CommunicationRequest",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-communicationrequest-copyto"
+          ]
+        },
+        "id": "88704bad-8b54-4c62-bc75-c679f94e6700",
+        "groupIdentifier": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "active",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org.au/CodeSystem/communication-request-category",
+                "code": "copyto-reports",
+                "display": "Copy To Reports"
+              }
+            ]
+          }
+        ],
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "about": [
+          {
+            "reference": "urn:uuid:d270f49f-0737-47af-b5b8-a09de4728ce6"
+          },
+          {
+            "reference": "urn:uuid:257bdd3a-d4d3-420c-a6f3-89d4a61753e1"
+          },
+          {
+            "reference": "urn:uuid:88270779-636a-409b-9c06-c95cabbccfa5"
+          },
+          {
+            "reference": "urn:uuid:5047c481-2602-43b1-9928-7eba83a70b0c"
+          }
+        ],
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "recipient": [
+          {
+            "reference": "PractitionerRole/midwife-thorn-brittany"
+          }
+        ],
+        "authoredOn": "2026-03-12T07:38:00.243221+10:00",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>CommunicationRequest</h3><p><strong>Status:</strong> active</p><p>Request for communication regarding patient care.</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "CommunicationRequest"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:deea085f-1285-4b0a-bb44-eed685d878f4",
+      "request": {
+        "method": "GET",
+        "url": "PractitionerRole/midwife-thorn-brittany"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a8818dca-f3e0-4dae-be7b-f1e58799ef44",
+      "resource": {
+        "resourceType": "Consent",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-mhrconsentwithdrawal"
+          ]
+        },
+        "id": "a8818dca-f3e0-4dae-be7b-f1e58799ef44",
+        "status": "active",
+        "scope": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+              "code": "patient-privacy",
+              "display": "Privacy Consent"
+            }
+          ],
+          "text": "Patient Privacy"
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                "code": "IDSCL",
+                "display": "information disclosure"
+              }
+            ],
+            "text": "information disclosure"
+          }
+        ],
+        "patient": {
+          "reference": "Patient/belger-remedios"
+        },
+        "dateTime": "2026-03-12T07:38:00.243257+10:00",
+        "performer": [
+          {
+            "reference": "Patient/belger-remedios"
+          }
+        ],
+        "organization": [
+          {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        ],
+        "policy": [
+          {
+            "authority": "https://www.health.gov.au",
+            "uri": "https://www.legislation.gov.au/C2012A00063"
+          }
+        ],
+        "policyRule": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+              "code": "OPTIN"
+            }
+          ],
+          "text": "Opt in"
+        },
+        "provision": {
+          "type": "deny",
+          "action": [
+            {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/consentaction",
+                  "code": "disclose",
+                  "display": "Disclose"
+                }
+              ]
+            }
+          ],
+          "class": [
+            {
+              "system": "http://hl7.org/fhir/resource-types",
+              "code": "DiagnosticReport"
+            }
+          ],
+          "data": [
+            {
+              "meaning": "dependents",
+              "reference": {
+                "reference": "urn:uuid:d270f49f-0737-47af-b5b8-a09de4728ce6"
+              }
+            },
+            {
+              "meaning": "dependents",
+              "reference": {
+                "reference": "urn:uuid:257bdd3a-d4d3-420c-a6f3-89d4a61753e1"
+              }
+            },
+            {
+              "meaning": "dependents",
+              "reference": {
+                "reference": "urn:uuid:88270779-636a-409b-9c06-c95cabbccfa5"
+              }
+            },
+            {
+              "meaning": "dependents",
+              "reference": {
+                "reference": "urn:uuid:5047c481-2602-43b1-9928-7eba83a70b0c"
+              }
+            }
+          ]
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Consent</h3><p><strong>Status:</strong> active</p><p><strong>Scope:</strong> Privacy Consent</p><p><strong>Category:</strong> information disclosure</p><p><strong>Provision:</strong> deny</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Consent"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:1ab9c82d-70bf-4373-bd76-ed1174e7446b",
+      "resource": {
+        "resourceType": "CommunicationRequest",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-communicationrequest-patient"
+          ]
+        },
+        "id": "1ab9c82d-70bf-4373-bd76-ed1174e7446b",
+        "groupIdentifier": {
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ],
+            "text": "Placer Group Number"
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "active",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org.au/CodeSystem/communication-request-category",
+                "code": "patient-preference",
+                "display": "Patient Preference"
+              }
+            ]
+          }
+        ],
+        "doNotPerform": true,
+        "medium": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ParticipationMode",
+                "code": "SMSWRIT"
+              }
+            ],
+            "text": "SMS"
+          }
+        ],
+        "subject": {
+          "reference": "Patient/belger-remedios"
+        },
+        "about": [
+          {
+            "reference": "urn:uuid:d270f49f-0737-47af-b5b8-a09de4728ce6"
+          },
+          {
+            "reference": "urn:uuid:257bdd3a-d4d3-420c-a6f3-89d4a61753e1"
+          },
+          {
+            "reference": "urn:uuid:88270779-636a-409b-9c06-c95cabbccfa5"
+          },
+          {
+            "reference": "urn:uuid:5047c481-2602-43b1-9928-7eba83a70b0c"
+          }
+        ],
+        "authoredOn": "2026-03-12T07:38:00.243292+10:00",
+        "requester": {
+          "reference": "Patient/belger-remedios"
+        },
+        "recipient": [
+          {
+            "reference": "Patient/belger-remedios"
+          }
+        ],
+        "sender": {
+          "reference": "Organization/kioma-pathology",
+          "display": "Kioma Pathology"
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>CommunicationRequest</h3><p><strong>Status:</strong> active</p><p>Request for communication regarding patient care.</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "CommunicationRequest"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:b9c24ae3-6f3f-4150-8185-1ca69a440f5e",
+      "resource": {
+        "resourceType": "Task",
+        "meta": {
+          "profile": [
+            "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-task-group"
+          ],
+          "tag": [
+            {
+              "system": "http://terminology.hl7.org.au/CodeSystem/resource-tag",
+              "code": "fulfilment-task-group"
+            }
+          ]
+        },
+        "id": "b9c24ae3-6f3f-4150-8185-1ca69a440f5e",
+        "groupIdentifier": {
+          "use": "usual",
+          "type": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                "code": "PGN",
+                "display": "Placer Group Number"
+              }
+            ]
+          },
+          "system": "http://myclinic.example.org.au/identifier",
+          "value": "26-867099",
+          "assigner": {
+            "reference": "Organization/kioma-pathology",
+            "display": "Kioma Pathology"
+          }
+        },
+        "status": "requested",
+        "intent": "order",
+        "priority": "routine",
+        "code": {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/CodeSystem/task-code",
+              "code": "fulfill"
+            }
+          ]
+        },
+        "for": {
+          "reference": "Patient/belger-remedios"
+        },
+        "authoredOn": "2026-03-12T07:38:00.243302+10:00",
+        "requester": {
+          "reference": "PractitionerRole/generalpractitioner-guthridge-jarred"
+        },
+        "owner": {
+          "reference": "Organization/kioma-pathology",
+          "display": "Kioma Pathology"
+        },
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>Task</h3><p><strong>Status:</strong> requested</p><p><strong>Intent:</strong> order</p></div>"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "url": "Task"
+      }
+    }
+  ],
+  "timestamp": "2026-03-12T07:37:59.862179+10:00"
+}

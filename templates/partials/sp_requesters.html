@@ -1,0 +1,30 @@
+<select id="spRequesterList" class="form-select"
+        onchange="spOnRequesterChange(this)">
+  {% if no_org %}
+  <option value="">Select an organisation first...</option>
+  {% elif (attached_requesters | default([]) | length + unattached_requesters | default([]) | length) == 0 %}
+  <option value="">No practitioners found for this organisation</option>
+  {% else %}
+  <option value="">Select a practitioner...</option>
+  {% set attached = attached_requesters | default([]) %}
+  {% set unattached = unattached_requesters | default([]) %}
+  {% if attached | length > 0 %}
+  <optgroup label="Attached to this organisation ({{ attached | length }})">
+    {% for r in attached %}
+    <option value="{{ r.id }}" data-name="{{ r.name }}">
+      ★ {{ r.name }}{% if r.specialty %} — {{ r.specialty }}{% endif %}
+    </option>
+    {% endfor %}
+  </optgroup>
+  {% endif %}
+  {% if unattached | length > 0 %}
+  <optgroup label="Other available practitioners ({{ unattached | length }})">
+    {% for r in unattached %}
+    <option value="{{ r.id }}" data-name="{{ r.name }}">
+      {{ r.name }}{% if r.specialty %} — {{ r.specialty }}{% endif %}
+    </option>
+    {% endfor %}
+  </optgroup>
+  {% endif %}
+  {% endif %}
+</select>

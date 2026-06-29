@@ -14,7 +14,8 @@ from fhirpathpy import evaluate
 from fhirutils import fhir_get as _original_fhir_get, format_fhir_date, get_text_display, find_category, get_form_data
 from bundler import create_request_bundle
 from referral_bundler import create_referral_bundle
-from provider_directory import search_providers
+from provider_directory import search_providers, search_roles, search_practitioners_by_service, search_unified
+from codesearch import search_codes as cs_search
 from fhir_parser import extract_resources
 from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
@@ -1129,6 +1130,8 @@ def get_requester_organisations():
     # Sort by name
     org_list = sorted(organisations.values(), key=lambda x: x["name"])
     logging.info(f"Returning {len(org_list)} requester organisations (filtered from {len(entries)} entries)")
+    if request.args.get('for') == 'sp':
+        return render_template('partials/sp_organisations.html', organisations=org_list)
     return render_template('partials/requester_organisations.html', organisations=org_list)
 
 
@@ -1225,6 +1228,10 @@ def get_requesters():
     attached_requesters = sorted(attached_requesters, key=lambda x: x["name"])
     unattached_requesters = sorted(unattached_requesters, key=lambda x: x["name"])
     logging.info(f"Found {len(attached_requesters)} attached + {len(unattached_requesters)} unattached requesters for org '{org_id}'")
+    if request.args.get('for') == 'sp':
+        return render_template('partials/sp_requesters.html',
+                               attached_requesters=attached_requesters,
+                               unattached_requesters=unattached_requesters)
     return render_template('partials/requesters.html',
                            attached_requesters=attached_requesters,
                            unattached_requesters=unattached_requesters)
@@ -1639,10 +1646,37 @@ def get_allergies(patient_id):
     return render_template('allergies.html', allergies=allergies)
 
 
+@app.route('/session/requesting-practitioner-widget')
+def requesting_practitioner_widget():
+    """HTMX partial: sidebar widget showing the current session ordering practitioner."""
+    prac = session.get('requesting_practitioner', None)
+    return render_template('partials/rp_widget.html', requesting_practitioner=prac)
+
+
+@app.route('/session/requesting-practitioner', methods=['POST'])
+def set_requesting_practitioner():
+    """Save the ordering practitioner to the session."""
+    role_id   = request.form.get('role_id',   '').strip()
+    role_name = request.form.get('role_name', '').strip()
+    role_org  = request.form.get('role_org',  '').strip()
+    if role_id and role_name:
+        session['requesting_practitioner'] = {
+            'id':   role_id,
+            'name': role_name,
+            'org':  role_org,
+            'ref':  f'PractitionerRole/{role_id}',
+        }
+    return '', 204
+
+
 @app.route('/fhir/diagnosticrequest/bundler/<patient_id>', methods=['POST'])
 def create_diagnostic_request_bundle(patient_id):
     form_data = get_form_data(request)
     form_data['patient_id'] = patient_id
+    # Inject session ordering practitioner so bundler doesn't need form fields for it
+    _sp = session.get('requesting_practitioner', {})
+    if _sp.get('id'):
+        form_data['requester'] = _sp['id']
     # Log the processed form data in a readable format
     logging.info(f"Form data: {json.dumps(form_data, indent=2)}")
 
@@ -1653,18 +1687,46 @@ def create_diagnostic_request_bundle(patient_id):
     return render_template('partials/json_textarea.html', bundle_json=bundle_json), 200
 
 
+@app.route('/pd-org-search', methods=['GET'])
+def pd_org_search():
+    """HTMX partial: organisation/service name typeahead from the Provider Directory."""
+    q = request.args.get('pdSearchName', '').strip()
+    if len(q) < 2:
+        return ''
+    providers = search_providers(name=q)
+    return render_template('partials/pd_org_dropdown.html', providers=providers)
+
+
+@app.route('/pd-practitioners', methods=['GET'])
+def pd_practitioners():
+    """HTMX partial: list PractitionerRoles at a specific service for referral target selection."""
+    service_ref = request.args.get('serviceRef', '').strip()
+    org_name = request.args.get('orgName', '').strip()
+    service_id = service_ref.split('/')[-1] if service_ref else ''
+    if not service_id:
+        return render_template('partials/provider_results.html', providers=[], pd_configured=True)
+    providers = search_practitioners_by_service(service_id)
+    return render_template('partials/provider_results.html', providers=providers,
+                           pd_configured=True, context_label=org_name)
+
+
+@app.route('/pd-role-search', methods=['GET'])
+def pd_role_search():
+    """HTMX partial: autocomplete specialist types from the Provider Directory."""
+    q = request.args.get('pdSearchSpecialty', '').strip()
+    roles = search_roles(q)
+    return render_template('partials/pd_role_dropdown.html', roles=roles)
+
+
 @app.route('/provider-search', methods=['GET'])
 def provider_search():
-    """HTMX partial: search HC Provider Directory and return a list of clickable result rows."""
-    name = request.args.get('pdSearchName', '').strip()
-    specialty = request.args.get('pdSearchSpecialty', '').strip()
-    suburb = request.args.get('pdSearchSuburb', '').strip()
-    pd_server = os.environ.get('PD_SERVER', '').rstrip('/')
-    providers = search_providers(name=name, specialty=specialty, suburb=suburb)
+    """HTMX partial: unified provider search — routes to geo, name, or service strategy."""
+    query = request.args.get('pdUnifiedQuery', '').strip()
+    providers = search_unified(query) if query else []
     return render_template(
         'partials/provider_results.html',
         providers=providers,
-        pd_configured=bool(pd_server),
+        pd_configured=True,
     ), 200
 
 
@@ -1672,6 +1734,10 @@ def provider_search():
 def create_referral_bundle_route(patient_id):
     form_data = get_form_data(request)
     form_data['patient_id'] = patient_id
+    # Inject session ordering practitioner
+    _sp = session.get('requesting_practitioner', {})
+    form_data['requester_name'] = _sp.get('name', '')
+    form_data['requester_org']  = _sp.get('org',  '')
     logging.info(f"Referral form data: {json.dumps(form_data, indent=2)}")
 
     attach_summary = form_data.get('attach_summary', '') in ('on', 'true', '1')
@@ -1961,64 +2027,84 @@ def get_order_sets_modal():
     return render_template('order_sets_config.html')
 
 
+_CODESEARCH_CONTEXT = {
+    'pathology': (
+        'http://hl7.org.au/fhir/ereq/StructureDefinition/'
+        'au-erequesting-servicerequest-path#ServiceRequest.code'
+    ),
+    'radiology': (
+        'http://hl7.org.au/fhir/ereq/StructureDefinition/'
+        'au-erequesting-servicerequest-imag#ServiceRequest.code'
+    ),
+}
+
 @app.route('/fhir/diagvalueset/expand')
 def diag_valueset_expand():
-    """
-    Expands a ValueSet for Pathology or Radiology test names using a terminology server.
-    Query params:
-      - type: 'Pathology' or 'Radiology'
-      - q: search string
-    """
     request_cat = request.args.get('requestCategory', '').lower()
     query = request.args.get('testName', '').strip()
-    ###logging.info(f'Request Category:[{request_cat}] should be one of pathology, radiology')
-    ###logging.info(f'testName:[{query}]')
-    if not request_cat or not query or request_cat not in ['pathology', 'radiology']:
+    if not request_cat or not query or request_cat not in _CODESEARCH_CONTEXT:
         return render_template('partials/test_names.html', testNames=[])
-    # Map test type to ValueSet URL (update these URLs to match your terminology server)
-    valueset_map = {
-        'pathology': 'http://pathologyrequest.example.com.au/ValueSet/boosted',   #  SNOMED Pathology Test ValueSet
-        'radiology': 'http://radiologyrequest.example.com.au/ValueSet/boosted',   #  SNOMED Radiology Test ValueSet
-    }
-    valueset_url = valueset_map[request_cat]
-
-    terminology_server = "https://r4.ontoserver.csiro.au/fhir" 
-    expand_url = f"{terminology_server}/ValueSet/$expand"
-    params = {
-        "url": valueset_url,
-        "filter": query,
-        "count": 15
-    }
-
+    context = _CODESEARCH_CONTEXT[request_cat]
     try:
-        logging.info(f'Request URL: {expand_url}?url={params.get("url")}&filter={params.get("filter")}&count={params.get("count")}')
-        resp = requests.get(expand_url, params=params, timeout=10)
-        logging.info(f'Response status: {resp.status_code}')
-        resp.raise_for_status()
-        data = resp.json()
-        logging.info(f'Response data keys: {list(data.keys())}')
-        testNames = []
-        contains = data.get("expansion", {}).get("contains", [])
-        logging.info(f'Found {len(contains)} test names for query "{query}"')
-        for item in contains:
-            code = item.get("code", "")
-            display = item.get("display") or code
-            if display:
-                testNames.append({
-                    "code": code,
-                    "display": display
-                })
-        return render_template('partials/test_names.html', testNames=testNames)
-    except requests.exceptions.RequestException as e:
-        logging.error(f'Request error in diag_valueset_expand: {str(e)}')
-        if hasattr(e, 'response') and e.response is not None:
-            logging.error(f'Response status: {e.response.status_code}')
-            logging.error(f'Response text: {e.response.text}')
-        return render_template('partials/test_names.html', testNames=[])
+        matches = cs_search(query, context, top_n=10)
+        testNames = [
+            {"code": m["code"], "display": m.get("display") or m["code"]}
+            for m in matches if m.get("code")
+        ]
     except Exception as e:
-        logging.error(f'General error in diag_valueset_expand: {str(e)}')
-        logging.error(f'Error type: {type(e).__name__}')
-        return render_template('partials/test_names.html', testNames=[])
+        logging.error(f'CodeSearch error in diag_valueset_expand: {e}')
+        testNames = []
+    return render_template('partials/test_names.html', testNames=testNames)
+
+@app.route('/fhir/specialtyvalueset/expand')
+def specialty_valueset_expand():
+    query = request.args.get('specialty_display', '').strip()
+    if not query:
+        return render_template('partials/specialty_names.html', specialties=[])
+    expand_url = "https://r4.ontoserver.csiro.au/fhir/ValueSet/$expand"
+    params = {
+        "url": "https://healthterminologies.gov.au/fhir/ValueSet/clinical-specialty-1",
+        "filter": query,
+        "count": 10,
+    }
+    try:
+        resp = requests.get(expand_url, params=params, timeout=10)
+        resp.raise_for_status()
+        specialties = [
+            {"code": item.get("code", ""), "display": item.get("display") or item.get("code", "")}
+            for item in resp.json().get("expansion", {}).get("contains", [])
+            if item.get("code")
+        ]
+    except Exception as e:
+        logging.error(f'specialty ValueSet expand error: {e}')
+        specialties = []
+    return render_template('partials/specialty_names.html', specialties=specialties)
+
+
+@app.route('/fhir/indicationvalueset/expand')
+def indication_valueset_expand():
+    query = request.args.get('indication_display', '').strip()
+    if not query:
+        return render_template('partials/indication_names.html', indications=[])
+    expand_url = "https://r4.ontoserver.csiro.au/fhir/ValueSet/$expand"
+    params = {
+        "url": "https://healthterminologies.gov.au/fhir/ValueSet/reason-for-encounter-1",
+        "filter": query,
+        "count": 10,
+    }
+    try:
+        resp = requests.get(expand_url, params=params, timeout=10)
+        resp.raise_for_status()
+        indications = [
+            {"code": item.get("code", ""), "display": item.get("display") or item.get("code", "")}
+            for item in resp.json().get("expansion", {}).get("contains", [])
+            if item.get("code")
+        ]
+    except Exception as e:
+        logging.error(f'indication ValueSet expand error: {e}')
+        indications = []
+    return render_template('partials/indication_names.html', indications=indications)
+
 
 @app.route('/fhir/reasonvalueset/expand')
 def reason_valueset_expand():
@@ -2765,7 +2851,10 @@ def filler_tasks():
         res = entry.get('resource', {})
         rt = res.get('resourceType', '')
         if rt == 'Task':
-            raw_tasks.append(res)
+            # Exclude Tasks whose focus is a CommunicationRequest — not referrals
+            focus_ref = res.get('focus', {}).get('reference', '')
+            if not focus_ref.startswith('CommunicationRequest/'):
+                raw_tasks.append(res)
         elif rt == 'ServiceRequest':
             service_requests[res.get('id', '')] = res
         elif rt == 'DocumentReference':
@@ -2902,7 +2991,9 @@ def filler_update_task_status(task_id):
         res = entry.get('resource', {})
         rt = res.get('resourceType', '')
         if rt == 'Task':
-            raw_tasks.append(res)
+            focus_ref = res.get('focus', {}).get('reference', '')
+            if not focus_ref.startswith('CommunicationRequest/'):
+                raw_tasks.append(res)
         elif rt == 'ServiceRequest':
             service_requests[res.get('id', '')] = res
         elif rt == 'DocumentReference':

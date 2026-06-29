@@ -1,0 +1,16 @@
+{% if indications %}
+{% for ind in indications %}
+<div class="dropdown-item indication-option py-1 px-2"
+     style="cursor: pointer;"
+     onclick="selectIndication('{{ ind.code }}', {{ ind.display | tojson | forceescape }})">
+    <div class="d-flex justify-content-between align-items-center">
+        <span>{{ ind.display }}</span>
+        <small class="text-muted ms-2 text-nowrap">{{ ind.code }}</small>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="dropdown-item-text text-muted small px-2 py-1">
+    <i class="fas fa-info-circle me-1"></i> No matches — free text will be used.
+</div>
+{% endif %}

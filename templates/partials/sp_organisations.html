@@ -1,0 +1,11 @@
+<select id="spOrgList" name="requesterOrganisation" class="form-select"
+        hx-get="/fhir/Requesters?for=sp"
+        hx-trigger="change"
+        hx-include="this"
+        hx-target="#spRequesterContainer"
+        hx-swap="innerHTML">
+  <option value="">Select an organisation...</option>
+  {% for org in organisations %}
+    <option value="{{ org.id }}">{{ org.name }}</option>
+  {% endfor %}
+</select>

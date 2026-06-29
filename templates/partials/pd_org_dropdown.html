@@ -1,0 +1,19 @@
+{% for p in providers %}
+<button type="button" class="dropdown-item py-2"
+        onclick="selectOrgAndLoadPractitioners({{ p.reference | tojson | forceescape }}, {{ p.name | tojson | forceescape }}, {{ p.org | tojson | forceescape }})">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <div class="fw-semibold" style="font-size:0.9em;">{{ p.name }}</div>
+            {% if p.org and p.org != p.name %}
+            <small class="text-muted">{{ p.org }}</small>
+            {% endif %}
+        </div>
+        {% if p.address %}
+        <small class="text-muted ms-3 text-end text-nowrap" style="font-size:0.78em;">{{ p.address }}</small>
+        {% endif %}
+    </div>
+</button>
+{% endfor %}
+{% if not providers %}
+<div class="dropdown-item text-muted py-1" style="pointer-events:none; font-size:0.85em;">No matches</div>
+{% endif %}

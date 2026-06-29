@@ -3,7 +3,6 @@
     <div class="d-flex justify-content-between align-items-start mb-2">
         <div>
             <div class="fw-bold">{{ task.service_code }}</div>
-            <div class="text-muted small">Task {{ task.id[:8] }}…</div>
         </div>
         {% set s = task.status %}
         {% if s == 'completed' %}
@@ -31,6 +30,20 @@
         {% if task.reason %}<tr><th class="text-muted fw-normal">Indication</th><td>{{ task.reason }}</td></tr>{% endif %}
         <tr><th class="text-muted fw-normal">Authored</th><td>{{ task.authored_on[:19].replace('T',' ') if task.authored_on else '—' }}</td></tr>
         {% if task.status_reason %}<tr><th class="text-muted fw-normal">Status reason</th><td class="text-danger">{{ task.status_reason }}</td></tr>{% endif %}
+        <tr>
+            <th class="text-muted fw-normal">Task ID</th>
+            <td><code class="user-select-all" style="font-size:0.85em;">{{ task.id }}</code></td>
+        </tr>
+        <tr>
+            <th class="text-muted fw-normal">ServiceRequest ID</th>
+            <td>
+                {% if task.sr_id %}
+                <code class="user-select-all" style="font-size:0.85em;">{{ task.sr_id }}</code>
+                {% else %}
+                <span class="text-danger small"><i class="fas fa-exclamation-triangle me-1"></i>none — likely a group Task</span>
+                {% endif %}
+            </td>
+        </tr>
     </table>
 
     {% if task.clinical_narrative %}

@@ -1,0 +1,24 @@
+{% if requesting_practitioner %}
+<div class="px-2 pb-1">
+    <div class="text-muted mb-1" style="font-size:0.7em; text-transform:uppercase; letter-spacing:0.05em;">Ordering as</div>
+    <div class="fw-semibold text-white text-truncate" style="font-size:0.82em;">{{ requesting_practitioner.name }}</div>
+    {% if requesting_practitioner.org %}
+    <div class="text-muted text-truncate" style="font-size:0.75em;">{{ requesting_practitioner.org }}</div>
+    {% endif %}
+    <button class="btn btn-outline-secondary btn-sm w-100 mt-2" style="font-size:0.75em;"
+            data-bs-toggle="modal" data-bs-target="#setPractitionerModal">
+        <i class="fas fa-exchange-alt me-1"></i> Change
+    </button>
+</div>
+{% else %}
+<div class="px-2 pb-1">
+    <div class="text-warning small mb-2">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        <span style="font-size:0.8em;">No ordering practitioner set</span>
+    </div>
+    <button class="btn btn-warning btn-sm w-100" style="font-size:0.78em;"
+            data-bs-toggle="modal" data-bs-target="#setPractitionerModal">
+        <i class="fas fa-user-md me-1"></i> Set Practitioner
+    </button>
+</div>
+{% endif %}

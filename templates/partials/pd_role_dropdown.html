@@ -1,0 +1,10 @@
+{% for role in roles %}
+<button type="button" class="dropdown-item py-1 d-flex justify-content-between align-items-center"
+        onclick="selectPdRole({{ role.system | tojson | forceescape }}, {{ role.code | tojson | forceescape }}, {{ role.display | tojson | forceescape }})">
+    <span>{{ role.display }}</span>
+    <small class="text-muted ms-3">{{ role.code }}</small>
+</button>
+{% endfor %}
+{% if not roles %}
+<div class="dropdown-item text-muted py-1" style="pointer-events:none; font-size:0.85em;">No matches</div>
+{% endif %}

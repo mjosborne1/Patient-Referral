@@ -1,13 +1,57 @@
+{% if context_label %}
+<div class="px-2 py-1 border-bottom bg-light" style="font-size:0.8em;">
+    <i class="fas fa-user-md me-1 text-primary"></i>
+    <span class="text-muted">Practitioners at</span>
+    <strong>{{ context_label }}</strong>
+    <button type="button" class="btn btn-link btn-sm py-0 px-1 text-secondary float-end"
+            style="font-size:0.85em; line-height:1;"
+            onclick="document.getElementById('pdResults').innerHTML='<div class=\'text-muted small px-2 py-2\'>Search the HC Provider Directory above, or enter details manually below.</div>'; document.getElementById('pdSearchName').value='';"
+            title="Clear">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+{% endif %}
 {% if providers %}
 <ul class="list-group list-group-flush" id="providerResultList">
     {% for p in providers %}
+    {% if p.resource_type == 'HealthcareService' %}
     <li class="list-group-item list-group-item-action py-2 px-3"
         style="cursor:pointer;"
+        title="Click to see practitioners at this service"
+        onclick="selectOrgAndLoadPractitioners(
+            {{ p.reference | tojson | forceescape }},
+            {{ p.name | tojson | forceescape }},
+            {{ p.org | tojson | forceescape }}
+        )">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="fw-semibold">{{ p.name }}</div>
+                {% if p.org and p.org != p.name %}
+                <div class="text-muted" style="font-size:0.8em;">{{ p.org }}</div>
+                {% endif %}
+            </div>
+            <div class="text-end">
+                {% if p.distance_km is not none %}
+                <span class="badge bg-info text-dark me-1">{{ p.distance_km }} km</span>
+                {% endif %}
+                <span class="badge bg-light text-secondary border" style="font-size:0.7em;">
+                    <i class="fas fa-chevron-right me-1"></i>practitioners
+                </span>
+                {% if p.address %}
+                <div class="text-muted mt-1" style="font-size:0.75em;">{{ p.address }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </li>
+    {% else %}
+    <li class="list-group-item list-group-item-action py-2 px-3"
+        style="cursor:pointer;"
+        title="Click to select this practitioner"
         onclick="selectProvider(
-            {{ p.name | tojson }},
-            {{ p.org | tojson }},
-            {{ p.reference | tojson }},
-            {{ p.specialty | tojson }}
+            {{ p.name | tojson | forceescape }},
+            {{ p.org | tojson | forceescape }},
+            {{ p.reference | tojson | forceescape }},
+            {{ p.specialty | tojson | forceescape }}
         )">
         <div class="d-flex justify-content-between align-items-start">
             <div>
@@ -20,7 +64,12 @@
                 {% endif %}
             </div>
             <div class="text-end">
-                <span class="badge bg-secondary">{{ p.resource_type }}</span>
+                {% if p.distance_km is not none %}
+                <span class="badge bg-info text-dark me-1">{{ p.distance_km }} km</span>
+                {% endif %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:0.7em;">
+                    <i class="fas fa-check me-1"></i>select
+                </span>
                 {% if p.address %}
                 <div class="text-muted mt-1" style="font-size:0.75em;">{{ p.address }}</div>
                 {% endif %}
@@ -30,6 +79,7 @@
             </div>
         </div>
     </li>
+    {% endif %}
     {% endfor %}
 </ul>
 {% elif pd_configured %}
