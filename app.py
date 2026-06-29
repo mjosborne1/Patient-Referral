@@ -2834,26 +2834,21 @@ def filler_screen():
     return render_template('filler_dashboard.html')
 
 
-@app.route('/filler/tasks', methods=['GET'])
-@login_required
-def filler_tasks():
-    status_filter = request.args.get('status', '').strip()
-    data = _fetch_tasks_bundle(status_filter or None)
+_SPECIALIST_CATEGORY = '306206005'
+_EXCLUDED_CATEGORIES = {'108252007', '363679005'}  # Pathology, Radiology
 
+
+def _bundle_to_specialist_tasks(data):
+    """Parse a Task search bundle and return only specialist-referral tasks."""
     service_requests = {}
     doc_refs = {}
     raw_tasks = []
-
-    _SPECIALIST_CATEGORY = '306206005'
-    _EXCLUDED_CATEGORIES = {'108252007', '363679005'}  # Pathology, Radiology
 
     for entry in data.get('entry', []):
         res = entry.get('resource', {})
         rt = res.get('resourceType', '')
         if rt == 'Task':
-            focus_ref = res.get('focus', {}).get('reference', '')
-            if not focus_ref.startswith('CommunicationRequest/'):
-                raw_tasks.append(res)
+            raw_tasks.append(res)
         elif rt == 'ServiceRequest':
             service_requests[res.get('id', '')] = res
         elif rt == 'DocumentReference':
@@ -2862,22 +2857,29 @@ def filler_tasks():
     def _is_specialist_referral(task_res):
         sr_ref = task_res.get('focus', {}).get('reference', '')
         if not sr_ref or not sr_ref.startswith('ServiceRequest/'):
-            return False  # no linked ServiceRequest — skip
-        sr_id = sr_ref.split('/')[-1]
-        sr = service_requests.get(sr_id, {})
+            return False
+        sr = service_requests.get(sr_ref.split('/')[-1], {})
         if not sr:
-            return False  # SR not returned in _include — skip
+            return False
         codes = {
             c.get('code', '')
             for cat in sr.get('category', [])
             for c in cat.get('coding', [])
         }
         if codes & _EXCLUDED_CATEGORIES:
-            return False  # pathology or radiology — skip
+            return False
         return _SPECIALIST_CATEGORY in codes
 
-    tasks = [_parse_task(t, service_requests, doc_refs)
-             for t in raw_tasks if _is_specialist_referral(t)]
+    return [_parse_task(t, service_requests, doc_refs)
+            for t in raw_tasks if _is_specialist_referral(t)]
+
+
+@app.route('/filler/tasks', methods=['GET'])
+@login_required
+def filler_tasks():
+    status_filter = request.args.get('status', '').strip()
+    data = _fetch_tasks_bundle(status_filter or None)
+    tasks = _bundle_to_specialist_tasks(data)
     return render_template('partials/filler_task_list.html', tasks=tasks), 200
 
 
@@ -2993,22 +2995,7 @@ def filler_update_task_status(task_id):
         return jsonify({'error': str(exc)}), 502
 
     # Return refreshed task list (HTMX target = #fillerTaskList)
-    data = _fetch_tasks_bundle()
-    service_requests = {}
-    doc_refs = {}
-    raw_tasks = []
-    for entry in data.get('entry', []):
-        res = entry.get('resource', {})
-        rt = res.get('resourceType', '')
-        if rt == 'Task':
-            focus_ref = res.get('focus', {}).get('reference', '')
-            if not focus_ref.startswith('CommunicationRequest/'):
-                raw_tasks.append(res)
-        elif rt == 'ServiceRequest':
-            service_requests[res.get('id', '')] = res
-        elif rt == 'DocumentReference':
-            doc_refs[res.get('id', '')] = res
-    tasks = [_parse_task(t, service_requests, doc_refs) for t in raw_tasks]
+    tasks = _bundle_to_specialist_tasks(_fetch_tasks_bundle())
     return render_template('partials/filler_task_list.html', tasks=tasks), 200
 
 

@@ -12,6 +12,7 @@ _PD_DEFAULT = "https://fhir-xrp.digitalhealth.gov.au/fhir"
 _NEAR_RADIUS_KM = 20
 
 _role_cache: dict = {"codes": [], "ts": 0.0}
+_svc_type_cache: dict = {"codes": [], "ts": 0.0}
 
 
 def pd_server():
@@ -108,6 +109,41 @@ def _get_pd_roles() -> list:
     result = sorted(seen.values(), key=lambda x: x["display"])
     _role_cache["codes"] = result
     _role_cache["ts"] = now
+    return result
+
+
+def _get_pd_service_types() -> list:
+    """Fetch and cache unique HealthcareService type codes from the Provider Directory (1-hour TTL)."""
+    now = time.time()
+    if _svc_type_cache["codes"] and now - _svc_type_cache["ts"] < 3600:
+        return _svc_type_cache["codes"]
+
+    try:
+        data = _fhir_get(
+            f"{pd_server()}/HealthcareService",
+            {"_count": 200, "_elements": "type", "_format": "json"},
+        )
+    except Exception as exc:
+        logging.warning(f"PD service type cache fetch failed: {exc}")
+        return _svc_type_cache["codes"]
+
+    seen: dict = {}
+    for entry in data.get("entry", []):
+        r = entry.get("resource", {})
+        if r.get("resourceType") != "HealthcareService":
+            continue
+        for type_cc in r.get("type", []):
+            for coding in type_cc.get("coding", []):
+                code = coding.get("code", "")
+                display = coding.get("display", "")
+                system = coding.get("system", "http://snomed.info/sct")
+                key = (system, code)
+                if code and display and key not in seen:
+                    seen[key] = {"system": system, "code": code, "display": display}
+
+    result = sorted(seen.values(), key=lambda x: x["display"])
+    _svc_type_cache["codes"] = result
+    _svc_type_cache["ts"] = now
     return result
 
 
@@ -376,10 +412,18 @@ def _parse_practitioner_role_bundle(data, query_lat=None, query_lon=None):
 import re as _re
 
 
+_SPECIALTY_SUFFIXES = (
+    "ology", "iatry", "iatrics", "surgery", "surgeon",
+    "therapy", "therapist", "ician", "iatrist",
+)
+
+
 def _looks_geographic(q: str) -> bool:
     """
     True when the query is more likely a location than a person/service name.
-    Prevents "Dr Smith" being geocoded as "Smith Drive" by Nominatim.
+    Prevents "Dr Smith" being geocoded as "Smith Drive" by Nominatim,
+    and prevents specialty terms like "Psychology" being geocoded to a
+    building name that Nominatim happens to find.
     """
     # 4-digit Australian postcode
     if _re.match(r'^\d{4}$', q):
@@ -393,6 +437,11 @@ def _looks_geographic(q: str) -> bool:
     # Explicit state abbreviation → geographic
     if _re.search(r'\b(nsw|vic|qld|sa|wa|tas|nt|act)\b', q, _re.IGNORECASE):
         return True
+    # Single-word specialty/service names end in recognisable clinical suffixes
+    # (e.g. "Psychology", "Cardiology", "Psychiatry", "Physiotherapy")
+    # → route to service-type / practitioner-role search, not geocoding
+    if any(q.strip().lower().endswith(s) for s in _SPECIALTY_SUFFIXES):
+        return False
     # Single word → try as suburb/town
     # Multi-word without a state → likely a name or service name → text search
     return len(q.split()) == 1
@@ -476,6 +525,45 @@ def search_unified(query: str) -> list:
         _add(_parse_name_bundle(data))
     except Exception as exc:
         logging.warning(f"HS name search failed: {exc}")
+
+    # 3. Service-type token search — match query against known HealthcareService type
+    #    codes (e.g. "Psychology" → "Psychology service" → SNOMED 310123008).
+    #    This finds clinics whose *type* matches even when the clinic name does not.
+    q_lower = q.lower()
+    matched_type = next(
+        (t for t in _get_pd_service_types() if q_lower in t["display"].lower()),
+        None,
+    )
+    if matched_type:
+        try:
+            data = _fhir_get(f"{server}/HealthcareService", {
+                "service-type": f"{matched_type['system']}|{matched_type['code']}",
+                "_include": ["HealthcareService:organization", "HealthcareService:location"],
+                "_count": 10,
+                "_format": "json",
+            })
+            _add(_parse_name_bundle(data))
+        except Exception as exc:
+            logging.warning(f"HS service-type search failed: {exc}")
+
+    # 4. PractitionerRole code search — match query against known role codes
+    #    (e.g. "Psychology" → "Psychologist" role code).
+    matched_roles = [r for r in _get_pd_roles() if q_lower in r["display"].lower()]
+    for role in matched_roles[:2]:
+        try:
+            data = _fhir_get(f"{server}/PractitionerRole", {
+                "role": f"{role['system']}|{role['code']}",
+                "_include": [
+                    "PractitionerRole:location",
+                    "PractitionerRole:organization",
+                    "PractitionerRole:service",
+                ],
+                "_count": 10,
+                "_format": "json",
+            })
+            _add(_parse_practitioner_role_bundle(data))
+        except Exception as exc:
+            logging.warning(f"PractitionerRole role search failed: {exc}")
 
     return results[:10]
 
