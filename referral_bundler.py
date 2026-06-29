@@ -10,6 +10,13 @@ def _get_localtime_bne():
     return utc_plus_10.strftime("%Y-%m-%dT%H:%M:%S.%f+10:00")
 
 
+def _narrative(inner_html: str) -> dict:
+    return {
+        "status": "generated",
+        "div": f'<div xmlns="http://www.w3.org/1999/xhtml">{inner_html}</div>',
+    }
+
+
 def _make_entry(resource, resource_type):
     resource_id = resource.get("id", str(uuid.uuid4()))
     return {
@@ -25,7 +32,7 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
 
     Bundle contents:
         Encounter         – minimal ambulatory context (required by ServiceRequest)
-        ServiceRequest    – the referral order (DiagnosticRequest profile as proxy)
+        ServiceRequest    – the referral order (no ereq profile — no referral profile exists yet)
         Task              – fulfilment tracking, initial status = requested
         DocumentReference – clinical context narrative (LOINC 107903-7, text/plain)
     """
@@ -59,11 +66,9 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
     encounter = {
         "resourceType": "Encounter",
         "id": enc_id,
-        "meta": {
-            "profile": [
-                "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
-            ]
-        },
+        "text": _narrative(
+            f"<p><b>Encounter</b> — ambulatory, {now[:10]}</p>"
+        ),
         "status": "finished",
         "class": {
             "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
@@ -98,21 +103,17 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
             ]
         reason_code = [rc]
 
+    _sr_indication = f" for {indication_display}" if indication_display else ""
+    _sr_performer = f" to {performer_name}" if performer_name else ""
     service_request = {
         "resourceType": "ServiceRequest",
         "id": sr_id,
-        "meta": {
-            "profile": [
-                # Using DiagnosticRequest as proxy until an eReferral profile is defined
-                "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-path"
-            ]
-        },
-        "extension": [
-            {
-                "url": "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-display-sequence",
-                "valueInteger": 1,
-            }
-        ],
+        "text": _narrative(
+            f"<p><b>Referral:</b> {specialty_display}{_sr_indication}{_sr_performer}</p>"
+            f"<p><b>Priority:</b> {priority} — <b>Requester:</b> {requester_name}"
+            + (f", {requester_org}" if requester_org else "")
+            + f" — <b>Authored:</b> {now[:10]}</p>"
+        ),
         "identifier": [
             {
                 "type": {
@@ -137,7 +138,7 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
                     }
                 ]
             },
-            "system": "http://example.org/placer",
+            "system": "http://myclinic.example.org.au/identifier",
             "value": requisition_number,
         },
         "status": "active",
@@ -173,9 +174,33 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
         "resourceType": "Task",
         "id": task_id,
         "meta": {
-            "profile": [
-                "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-task-diagnosticrequest"
+            "tag": [
+                {
+                    "system": "http://terminology.hl7.org.au/CodeSystem/resource-tag",
+                    "code": "fulfilment-task",
+                }
             ]
+        },
+        "text": _narrative(
+            f"<p><b>Fulfilment Task</b> for referral {requisition_number}</p>"
+            f"<p><b>Status:</b> requested — <b>Requester:</b> {requester_name}"
+            + (f" — <b>Owner:</b> {performer_org}" if performer_org else "")
+            + "</p>"
+        ),
+        "groupIdentifier": {
+            "use": "usual",
+            "type": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                        "code": "PGN",
+                        "display": "Placer Group Number",
+                    }
+                ]
+            },
+            "system": "http://myclinic.example.org.au/identifier",
+            "value": requisition_number,
+            "assigner": {"display": requester_org or "Requesting Organisation"},
         },
         "status": "requested",
         "intent": "order",
@@ -194,11 +219,10 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
     doc_ref = {
         "resourceType": "DocumentReference",
         "id": docref_id,
-        "meta": {
-            "profile": [
-                "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-documentreference-clinicalcontext"
-            ]
-        },
+        "text": _narrative(
+            f"<p><b>Clinical Context</b> — authored by {requester_name}, {now[:10]}</p>"
+            + (f"<p>{clinical_narrative}</p>" if clinical_narrative else "")
+        ),
         "status": "current",
         "type": {
             "coding": [
@@ -242,6 +266,9 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
                 ps_doc_ref = {
                     "resourceType": "DocumentReference",
                     "id": ps_docref_id,
+                    "text": _narrative(
+                        "<p><b>AU Patient Summary</b> — attached inline (FHIR Bundle, base64-encoded)</p>"
+                    ),
                     "status": "current",
                     "type": {
                         "coding": [
@@ -273,6 +300,9 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
                 ps_doc_ref = {
                     "resourceType": "DocumentReference",
                     "id": ps_docref_id,
+                    "text": _narrative(
+                        f"<p><b>AU Patient Summary</b> — endpoint hint: {summary_url}</p>"
+                    ),
                     "status": "current",
                     "type": {
                         "coding": [

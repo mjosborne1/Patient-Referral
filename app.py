@@ -1,16 +1,15 @@
-from flask import Flask, g, render_template, jsonify, request, session, redirect, url_for, make_response
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, make_response
 import requests
 import json
 import logging
-from flask_login import LoginManager, AnonymousUserMixin, UserMixin, login_user, logout_user, login_required, current_user
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from datetime import datetime
 import os
 import socket
 import hashlib
 import base64
 import secrets
-from urllib.parse import urlencode, urlparse, parse_qs
-from fhirpathpy import evaluate
+from urllib.parse import urlencode, urlparse
 from fhirutils import fhir_get as _original_fhir_get, format_fhir_date, get_text_display, find_category, get_form_data
 from bundler import create_request_bundle
 from referral_bundler import create_referral_bundle
@@ -279,8 +278,6 @@ def smart_callback():
         expires_in = token_json.get('expires_in', 3600)
         token_type = token_json.get('token_type', 'Bearer')
         scope_granted = token_json.get('scope', '')
-        id_token = token_json.get('id_token')
-
         if not access_token:
             return render_template('index.html', smart_error="No access token in response")
 
@@ -645,7 +642,6 @@ def get_patients():
                             break
                     
                     if next_link_url:
-                        from urllib.parse import urlparse
                         parsed_url = urlparse(next_link_url)
                         if parsed_url.query:
                             current_url = f"/Patient?{parsed_url.query}"
@@ -944,7 +940,7 @@ def get_patient_summary(patient_id):
     # requests that include credentials for an account without the required role.
     # If we get a 401 AND we sent credentials, retry once without them.
     if response.status_code in (401, 403) and auth_creds is not None:
-        print(f"[Patient Summary] 401 with credentials — retrying unauthenticated")
+        print("[Patient Summary] 401 with credentials — retrying unauthenticated")
         try:
             response = fhir_get(
                 api_path,
@@ -2268,7 +2264,7 @@ def get_demographics():
     """Get patient demographics statistics for visualization"""
     # Fetch patients for demographic analysis
     response = fhir_get(
-        f"/Patient?_count=100", fhir_server_url=get_fhir_server_url(), timeout=10)  
+        "/Patient?_count=100", fhir_server_url=get_fhir_server_url(), timeout=10)  
     
     if response.status_code == 200:
         patients = response.json().get('entry', [])
@@ -2327,11 +2323,11 @@ def get_demographics():
         
         # Fetch ServiceRequests with details
         service_request_response = fhir_get(
-            f"/ServiceRequest?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
+            "/ServiceRequest?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
         
         # Fetch Observations with details  
         observation_response = fhir_get(
-            f"/Observation?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
+            "/Observation?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
         
         # Process ServiceRequests
         service_requests = []
@@ -2427,20 +2423,20 @@ def get_dashboard():
     """Get dashboard data for the main dashboard view"""
     # Fetch patients
     patient_response = fhir_get(
-        f"/Patient?_count=100", fhir_server_url=get_fhir_server_url(), timeout=10)  
+        "/Patient?_count=100", fhir_server_url=get_fhir_server_url(), timeout=10)  
     
     # Fetch observations count
     observation_response = fhir_get(
-        f"/Observation?_summary=count", fhir_server_url=get_fhir_server_url(), timeout=10)  
+        "/Observation?_summary=count", fhir_server_url=get_fhir_server_url(), timeout=10)  
     
     # Fetch group tasks with tag filter
     group_tasks_response = fhir_get(
-        f"/Task?_tag=http://terminology.hl7.org.au/CodeSystem/resource-tag|fulfilment-task-group", 
+        "/Task?_tag=http://terminology.hl7.org.au/CodeSystem/resource-tag|fulfilment-task-group", 
         fhir_server_url=get_fhir_server_url(), timeout=10)
     
     # Fetch ServiceRequests count
     service_requests_response = fhir_get(
-        f"/ServiceRequest?_summary=count", fhir_server_url=get_fhir_server_url(), timeout=10)
+        "/ServiceRequest?_summary=count", fhir_server_url=get_fhir_server_url(), timeout=10)
     
     patient_count = 0
     observation_count = 0
@@ -2565,11 +2561,11 @@ def get_stats():
     
     # Fetch ServiceRequests with details
     service_request_response = fhir_get(
-        f"/ServiceRequest?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
+        "/ServiceRequest?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
     
     # Fetch Observations with details  
     observation_response = fhir_get(
-        f"/Observation?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
+        "/Observation?_count=1000", fhir_server_url=get_fhir_server_url(), timeout=15)
     
     service_request_stats = {}
     observation_stats = {}
@@ -2809,6 +2805,7 @@ def _fetch_tasks_bundle(status_filter=None):
     open_statuses = 'requested,received,accepted,in-progress,on-hold'
     params = {
         'status': status_filter if status_filter else open_statuses,
+        '_tag': 'http://terminology.hl7.org.au/CodeSystem/resource-tag|fulfilment-task',
         '_include': ['Task:focus', 'Task:patient'],
         '_count': 50,
         '_sort': '-authored-on',
@@ -2847,11 +2844,13 @@ def filler_tasks():
     doc_refs = {}
     raw_tasks = []
 
+    _SPECIALIST_CATEGORY = '306206005'
+    _EXCLUDED_CATEGORIES = {'108252007', '363679005'}  # Pathology, Radiology
+
     for entry in data.get('entry', []):
         res = entry.get('resource', {})
         rt = res.get('resourceType', '')
         if rt == 'Task':
-            # Exclude Tasks whose focus is a CommunicationRequest — not referrals
             focus_ref = res.get('focus', {}).get('reference', '')
             if not focus_ref.startswith('CommunicationRequest/'):
                 raw_tasks.append(res)
@@ -2860,7 +2859,25 @@ def filler_tasks():
         elif rt == 'DocumentReference':
             doc_refs[res.get('id', '')] = res
 
-    tasks = [_parse_task(t, service_requests, doc_refs) for t in raw_tasks]
+    def _is_specialist_referral(task_res):
+        sr_ref = task_res.get('focus', {}).get('reference', '')
+        if not sr_ref or not sr_ref.startswith('ServiceRequest/'):
+            return False  # no linked ServiceRequest — skip
+        sr_id = sr_ref.split('/')[-1]
+        sr = service_requests.get(sr_id, {})
+        if not sr:
+            return False  # SR not returned in _include — skip
+        codes = {
+            c.get('code', '')
+            for cat in sr.get('category', [])
+            for c in cat.get('coding', [])
+        }
+        if codes & _EXCLUDED_CATEGORIES:
+            return False  # pathology or radiology — skip
+        return _SPECIALIST_CATEGORY in codes
+
+    tasks = [_parse_task(t, service_requests, doc_refs)
+             for t in raw_tasks if _is_specialist_referral(t)]
     return render_template('partials/filler_task_list.html', tasks=tasks), 200
 
 
@@ -2874,57 +2891,50 @@ def filler_task_detail(task_id):
     if bearer:
         headers['Authorization'] = f'Bearer {bearer}'
 
-    # Fetch Task + focus ServiceRequest + related DocumentReferences
-    params = {'_include': ['Task:focus'], '_revinclude': 'DocumentReference:related'}
-    url = f"{server.rstrip('/')}/Task/{task_id}"
-    kwargs = {'params': params, 'headers': headers, 'timeout': 15}
+    # _include is only valid on searches, not direct reads. Use ?_id= search.
+    base = server.rstrip('/')
+    req_kwargs = {'headers': headers, 'timeout': 15}
     if auth and not bearer:
-        kwargs['auth'] = auth
+        req_kwargs['auth'] = auth
 
     service_requests = {}
     doc_refs = {}
     task_res = None
 
     try:
-        resp = requests.get(url, **kwargs)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get('resourceType') == 'Task':
-                task_res = data
-            elif data.get('resourceType') == 'Bundle':
-                for entry in data.get('entry', []):
-                    res = entry.get('resource', {})
-                    rt = res.get('resourceType', '')
-                    if rt == 'Task' and res.get('id') == task_id:
-                        task_res = res
-                    elif rt == 'ServiceRequest':
-                        service_requests[res.get('id', '')] = res
-                    elif rt == 'DocumentReference':
-                        doc_refs[res.get('id', '')] = res
+        # Step 1: search by _id with _include so Task + SR arrive in one call
+        resp = requests.get(
+            f"{base}/Task",
+            params={'_id': task_id, '_include': 'Task:focus'},
+            **req_kwargs,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for entry in data.get('entry', []):
+            res = entry.get('resource', {})
+            rt = res.get('resourceType', '')
+            if rt == 'Task':
+                task_res = res
+            elif rt == 'ServiceRequest':
+                service_requests[res.get('id', '')] = res
 
-                # Fetch any SR referenced in Task.focus that wasn't _included
-                if task_res and not service_requests:
-                    sr_ref = task_res.get('focus', {}).get('reference', '')
-                    if sr_ref:
-                        sr_id = sr_ref.split('/')[-1]
-                        sr_url = f"{server.rstrip('/')}/ServiceRequest/{sr_id}"
-                        sr_resp = requests.get(sr_url, headers=headers,
-                                               timeout=10, **(({'auth': auth} if auth and not bearer else {})))
-                        if sr_resp.status_code == 200:
-                            sr = sr_resp.json()
-                            service_requests[sr.get('id', '')] = sr
-
-                            # Fetch DocumentReferences for supportingInfo
-                            for si in sr.get('supportingInfo', []):
-                                dr_ref = si.get('reference', '')
-                                if dr_ref.startswith('DocumentReference/') or '/' in dr_ref:
-                                    dr_id = dr_ref.split('/')[-1]
-                                    dr_url = f"{server.rstrip('/')}/DocumentReference/{dr_id}"
-                                    dr_resp = requests.get(dr_url, headers=headers,
-                                                           timeout=10, **(({'auth': auth} if auth and not bearer else {})))
-                                    if dr_resp.status_code == 200:
-                                        dr = dr_resp.json()
-                                        doc_refs[dr.get('id', '')] = dr
+        # Step 2: fetch DocumentReferences from SR.supportingInfo individually
+        if task_res:
+            sr_ref = task_res.get('focus', {}).get('reference', '')
+            sr_id = sr_ref.split('/')[-1] if '/' in sr_ref else sr_ref
+            sr = service_requests.get(sr_id, {})
+            for si in sr.get('supportingInfo', []):
+                dr_ref = si.get('reference', '')
+                if not dr_ref:
+                    continue
+                dr_id = dr_ref.split('/')[-1]
+                dr_resp = requests.get(
+                    f"{base}/DocumentReference/{dr_id}", **req_kwargs
+                )
+                if dr_resp.status_code == 200:
+                    dr = dr_resp.json()
+                    if dr.get('resourceType') == 'DocumentReference':
+                        doc_refs[dr.get('id', '')] = dr
     except Exception as exc:
         logging.warning(f"Filler task detail fetch failed: {exc}")
 

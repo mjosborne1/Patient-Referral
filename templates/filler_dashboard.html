@@ -23,7 +23,7 @@
 
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="text-primary mb-0">
-                <i class="fas fa-hospital-user me-2"></i> Referral Inbox
+                <i class="fas fa-hospital-user me-2"></i> Specialist Referral Inbox
             </h2>
             <div class="d-flex gap-2">
                 <select id="statusFilter" class="form-select form-select-sm" style="width:auto;"
@@ -84,6 +84,33 @@
     </main>
 
     <script>
+    // Inject FHIR server URL and auth headers on every HTMX request,
+    // matching the pattern used by index.html so the filler routes
+    // hit the same server the user configured in Settings.
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+        var fhirServerUrl = localStorage.getItem('fhir_server_url');
+        if (fhirServerUrl) evt.detail.headers['X-FHIR-Server-URL'] = fhirServerUrl;
+
+        var authMode = localStorage.getItem('fhirAuthMode') || 'none';
+        if (authMode === 'basic') {
+            var username = localStorage.getItem('fhirUsername');
+            var password = localStorage.getItem('fhirPassword');
+            if (username && password) {
+                evt.detail.headers['X-FHIR-Username'] = username;
+                evt.detail.headers['X-FHIR-Password'] = password;
+            }
+        } else if (authMode === 'smart') {
+            var token = localStorage.getItem('smart_access_token');
+            if (token) evt.detail.headers['X-FHIR-Bearer-Token'] = token;
+        }
+        // Legacy basic-auth fallback
+        if (!localStorage.getItem('fhirAuthMode') && localStorage.getItem('useFhirAuth') === 'true') {
+            var u = localStorage.getItem('fhirUsername');
+            var p = localStorage.getItem('fhirPassword');
+            if (u && p) { evt.detail.headers['X-FHIR-Username'] = u; evt.detail.headers['X-FHIR-Password'] = p; }
+        }
+    });
+
     function refreshTaskList() {
         var filter = document.getElementById('statusFilter').value;
         var url = '/filler/tasks' + (filter ? '?status=' + encodeURIComponent(filter) : '');
