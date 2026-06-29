@@ -11,15 +11,20 @@ A Flask demo app for the **Sparked Connected Testing Event — Scenario 1 (eRequ
 - **Lab Results** – Interactive, formatted lab data per patient.
 - **Medications & Allergies** – See current medications and allergy history.
 - **Stats & Insights** – Visualize patient demographics and trends.
-- **Profile & Logout** – Manage your session with a click.
 - **Smooth Transitions** – No full page reloads, thanks to HTMX.
 
-Additional features added in this repo
-- **Settings** to choose a server to pull from
-- **PatientSummary** $summary bundles to text area for use in IG examples
-- **Diagnostic Requesting** dialog, create an AU eRequesting compliant bundle in the text area
-- **FHIR Bundle Visualisation** – Render any bundle in the text area as an interactive Mermaid SVG diagram, with one-click SVG download
+Additional features added in this repo:
+
+- **Settings** – Choose a FHIR server; supports No Auth, Basic Auth, and SMART App Launch (PKCE)
+- **Ordering Practitioner Session** – Select once at startup; used for all pathology requests, imaging requests, and referrals
+- **Specialist Referral / eReferral** – Create an AU eRequesting-compliant `ServiceRequest` referral bundle from provider search to submission
+- **Provider Directory Search** – Unified single-box search against the HC Provider Directory (name, suburb, postcode, or service type)
+- **Clinical Indication Typeahead** – SNOMED CT coded indication via the `reason-for-encounter-1` ValueSet (Ontoserver), with free-text fallback
+- **Diagnostic Requesting** – Create an AU eRequesting-compliant pathology or imaging `ServiceRequest` bundle
+- **PatientSummary** – `$summary` bundles rendered to text area for IG examples
+- **FHIR Bundle Visualisation** – Render any bundle as an interactive Mermaid SVG diagram, with one-click SVG download
 - **Common Order Sets** – Configure and manage reusable groups of diagnostic tests for quick ordering
+- **Filler / Specialist View** – Task inbox for the receiving specialist (Scenario 1 step ④)
 
 ---
 
@@ -123,6 +128,52 @@ Configure reusable groups of diagnostic tests to streamline ordering workflows. 
 
 ---
 
+## 🔗 eReferral / Specialist Referral
+
+Creates an AU eRequesting-compliant `ServiceRequest` bundle for a specialist referral.
+
+| Step | UI action | FHIR operation |
+| --- | --- | --- |
+| ① Find provider | Type name, suburb, or postcode in the referral form search box | `GET Practitioner?name=` / `GET Location?near=` → HC Provider Directory |
+| ② Select provider | Click a result row | Populates `ServiceRequest.performer` reference |
+| ③ Enter indication | Type a clinical indication — typeahead suggests SNOMED CT concepts from `reason-for-encounter-1` | `GET ValueSet/$expand` → CSIRO Ontoserver |
+| ④ Submit | Click "Create eReferral" | `POST [server]/Bundle` |
+
+The referral bundle includes `Patient`, `Practitioner` (requester, from session), `PractitionerRole`, `Organization`, `ServiceRequest`, and optionally a `DocumentReference` with the AU Patient Summary attachment.
+
+---
+
+## 🔍 Provider Directory Search
+
+Unified single-box search against the [HC Provider Directory](https://developer.digitalhealth.gov.au/specifications/clinical-specifications/erefer).
+
+| Query type | Example | Routing logic |
+| --- | --- | --- |
+| 4-digit postcode | `2041` | Geographic — `Location?near=lat\|lon\|20\|km` |
+| Suburb or state | `Balmain`, `ACT` | Geographic — Nominatim geocode → `Location?near=` |
+| Name with prefix | `Dr Smith` | Name search — `Practitioner?name=` |
+| Specialty or service | `Cardiology`, `MRI` | Service name — `HealthcareService?name=` |
+
+Results deduplicate by `(practitioner_id, specialty)` to collapse weekday/weekend split roles in the HC PD test dataset.
+
+---
+
+## 💊 Clinical Indication Typeahead
+
+The "Clinical Indication / Reason" field on the referral form expands the [`reason-for-encounter-1`](https://healthterminologies.gov.au/fhir/ValueSet/reason-for-encounter-1) ValueSet via CSIRO Ontoserver as the user types. Selecting a concept populates both the display text and the SNOMED CT concept code used in `ServiceRequest.reasonCode`. Free text is accepted if no matching concept is selected.
+
+Route: `GET /fhir/indicationvalueset/expand?indication_display=<query>`
+
+---
+
+## 👤 Ordering Practitioner Session
+
+On first load the app prompts for an ordering practitioner (organisation → individual). The selection is stored in the Flask session and used automatically as `ServiceRequest.requester` in all pathology requests, imaging requests, and referrals — no re-selection needed per order.
+
+To change the practitioner, open **Settings** (gear icon) → **Ordering Practitioner → Change**.
+
+---
+
 ## 🛠️ Quickstart
 
 - I have hosted an instance on render so you can see it working (and for Connectathon'ers)
@@ -156,11 +207,22 @@ pip install -r requirements.txt
 python app.py
 ```
 
-- Example `.env` file, all values are fictitious of course
+Example `.env` file — all values are fictitious:
+
 ```
+# eRequesting / patient FHIR server (Basic Auth)
 FHIR_USERNAME='Tester'
 FHIR_PASSWORD='Password4Tester'
 FHIR_SERVER='https://yourfhirserver.com/partition/fhir'
+
+# HC Provider Directory (used for specialist search in the referral form)
+PD_SERVER='https://fhir-xrp.digitalhealth.gov.au/fhir'
+# PD_USERNAME and PD_PASSWORD are optional — omit if the PD endpoint is open
+# PD_USERNAME='pd_user'
+# PD_PASSWORD='pd_pass'
+
+# Flask session secret — change this to a random value in production
+SECRET_KEY='change-me'
 ```
 
 Visit [http://127.0.0.1:5001/](http://127.0.0.1:5001/) in your browser.

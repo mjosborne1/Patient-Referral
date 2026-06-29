@@ -1,9 +1,10 @@
 ---
 id: 02-provider-directory-search
 type: proposal
-status: draft
+status: implemented
 scenario-steps: ["①provider-lookup"]
 created: 2026-06-17
+implemented: 2026-06-29
 ---
 
 # Proposal: Provider Directory Search

@@ -3838,10 +3838,17 @@ def get_business_statuses_for_status(task_status):
 
 if __name__ == '__main__' and os.environ.get('TESTING') != 'true':
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
-    # WERKZEUG_RUN_MAIN=true means this is the reloader child — reuse the port
-    # chosen by the parent so we don't jump to a new port on restart.
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    # Render, Docker, and similar cloud hosts set PORT externally — use it directly
+    # and bind to 0.0.0.0 so the platform's router can reach the process.
+    external_port = os.environ.get("PORT")
+    in_cloud = external_port is not None or os.path.exists("/.dockerenv") or os.environ.get("RENDER") == "true"
+    if in_cloud:
+        port = int(external_port or 5001)
+        host = "0.0.0.0"
+    elif os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        # Reloader child — reuse the port chosen by the parent process.
         port = int(os.environ.get("PORT", 5001))
+        host = "127.0.0.1"
     else:
         port = None
         for candidate in range(5001, 5011):
@@ -3852,6 +3859,6 @@ if __name__ == '__main__' and os.environ.get('TESTING') != 'true':
         if port is None:
             raise RuntimeError("No available port found in range 5001–5010")
         os.environ["PORT"] = str(port)
+        host = "127.0.0.1"
         print(f" * Starting on http://127.0.0.1:{port}")
-    in_docker = os.path.exists("/.dockerenv")
-    app.run(debug=debug_mode, host="0.0.0.0" if in_docker else "127.0.0.1", port=port)
+    app.run(debug=debug_mode, host=host, port=port)

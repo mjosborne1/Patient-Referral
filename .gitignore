@@ -160,3 +160,6 @@ cython_debug/
 #.idea/
 
 _tempfiles/
+
+# Local FHIR bundle scratch files
+json/
