@@ -352,8 +352,9 @@ function runPdSearch() {
     });
 }
 
-function selectOrgAndLoadPractitioners(serviceRef, serviceName, orgName) {
-    // Load practitioners for this service into the results panel
+function selectOrgAndLoadPractitioners(serviceRef, serviceName, orgName, specialty) {
+    var specEl = document.getElementById('specialtyDisplay');
+    if (specEl && !specEl.value && specialty) specEl.value = specialty;
     var url = '/pd-practitioners?serviceRef=' + encodeURIComponent(serviceRef)
               + '&orgName=' + encodeURIComponent(orgName);
     htmx.ajax('GET', url, { target: '#pdResults', swap: 'innerHTML' });

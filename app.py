@@ -1698,10 +1698,9 @@ def pd_practitioners():
     """HTMX partial: list PractitionerRoles at a specific service for referral target selection."""
     service_ref = request.args.get('serviceRef', '').strip()
     org_name = request.args.get('orgName', '').strip()
-    service_id = service_ref.split('/')[-1] if service_ref else ''
-    if not service_id:
+    if not service_ref:
         return render_template('partials/provider_results.html', providers=[], pd_configured=True)
-    providers = search_practitioners_by_service(service_id)
+    providers = search_practitioners_by_service(service_ref)
     return render_template('partials/provider_results.html', providers=providers,
                            pd_configured=True, context_label=org_name)
 
@@ -2994,9 +2993,7 @@ def filler_update_task_status(task_id):
         logging.error(f"Task {task_id} status PUT failed: {exc}")
         return jsonify({'error': str(exc)}), 502
 
-    # Return refreshed task list (HTMX target = #fillerTaskList)
-    tasks = _bundle_to_specialist_tasks(_fetch_tasks_bundle())
-    return render_template('partials/filler_task_list.html', tasks=tasks), 200
+    return '', 204
 
 
 @app.route('/api/organisations/with-tasks', methods=['GET'])

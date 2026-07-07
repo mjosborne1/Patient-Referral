@@ -58,6 +58,14 @@
     var _spRoleName = '';
     var _spOrgName  = '';
 
+    // Move focus out of the modal before Bootstrap sets aria-hidden="true" on hide,
+    // which would otherwise trigger a browser accessibility warning.
+    modal.addEventListener('hide.bs.modal', function () {
+        if (modal.contains(document.activeElement)) {
+            document.activeElement.blur();
+        }
+    });
+
     // Reset state when modal opens and reload orgs
     modal.addEventListener('show.bs.modal', function () {
         _spRoleId = _spRoleName = _spOrgName = '';

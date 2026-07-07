@@ -404,7 +404,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Also try to initialize when HTMX swaps content
 document.body.addEventListener('htmx:afterSwap', function(evt) {
     if (evt.detail.xhr && evt.detail.xhr.responseURL.includes('/fhir/Patients')) {
-        console.log('HTMX afterSwap fired for patients');
         initializePaginationFromDataAttributes();
     }
 });

@@ -52,10 +52,7 @@
             <div class="col-lg-7 col-xl-8">
                 <div class="card">
                     <div class="card-body p-0">
-                        <div id="fillerTaskList"
-                             hx-get="/filler/tasks"
-                             hx-trigger="load"
-                             hx-swap="innerHTML">
+                        <div id="fillerTaskList">
                             <div class="text-center py-4 text-muted">
                                 <div class="spinner-border spinner-border-sm me-2" role="status"></div>
                                 Loading referrals…
@@ -112,18 +109,50 @@
         }
     });
 
+    function _fillerHeaders(contentType) {
+        var h = {};
+        if (contentType) h['Content-Type'] = contentType;
+        var fhirServerUrl = localStorage.getItem('fhir_server_url');
+        if (fhirServerUrl) h['X-FHIR-Server-URL'] = fhirServerUrl;
+        var authMode = localStorage.getItem('fhirAuthMode') || 'none';
+        if (authMode === 'basic') {
+            var u = localStorage.getItem('fhirUsername');
+            var p = localStorage.getItem('fhirPassword');
+            if (u && p) { h['X-FHIR-Username'] = u; h['X-FHIR-Password'] = p; }
+        } else if (authMode === 'smart') {
+            var token = localStorage.getItem('smart_access_token');
+            if (token) h['X-FHIR-Bearer-Token'] = token;
+        }
+        if (!localStorage.getItem('fhirAuthMode') && localStorage.getItem('useFhirAuth') === 'true') {
+            var u2 = localStorage.getItem('fhirUsername');
+            var p2 = localStorage.getItem('fhirPassword');
+            if (u2 && p2) { h['X-FHIR-Username'] = u2; h['X-FHIR-Password'] = p2; }
+        }
+        return h;
+    }
+
     function refreshTaskList() {
         var sel = document.getElementById('statusFilter');
-        var filter = sel.value;
-        var label = sel.options[sel.selectedIndex].text;
-        document.getElementById('inboxStatusLabel').textContent = label;
+        var filter = sel ? sel.value : '';
+        var label = sel ? sel.options[sel.selectedIndex].text : 'All Open';
+        var labelEl = document.getElementById('inboxStatusLabel');
+        if (labelEl) labelEl.textContent = label;
         var url = '/filler/tasks' + (filter ? '?status=' + encodeURIComponent(filter) : '');
-        htmx.ajax('GET', url, {target: '#fillerTaskList', swap: 'innerHTML'});
+        fetch(url, {headers: _fillerHeaders()})
+            .then(function(resp) { return resp.text(); })
+            .then(function(html) {
+                var el = document.getElementById('fillerTaskList');
+                if (el) { el.innerHTML = html; htmx.process(el); }
+            });
     }
 
     function viewTask(taskId) {
-        htmx.ajax('GET', '/filler/task/' + taskId, {target: '#fillerDetail', swap: 'innerHTML'});
-        // Highlight selected row
+        fetch('/filler/task/' + taskId, {headers: _fillerHeaders()})
+            .then(function(resp) { return resp.text(); })
+            .then(function(html) {
+                var el = document.getElementById('fillerDetail');
+                if (el) { el.innerHTML = html; htmx.process(el); }
+            });
         document.querySelectorAll('.filler-task-row').forEach(function(r) {
             r.classList.remove('table-active');
         });
@@ -137,15 +166,24 @@
             statusReason = prompt('Reason for ' + newStatus + ' (required):');
             if (!statusReason) return;
         }
-        htmx.ajax('POST', '/filler/task/' + taskId + '/status', {
-            target: '#fillerTaskList',
-            swap: 'innerHTML',
-            values: {status: newStatus, status_reason: statusReason}
-        }).then(function() {
-            // Reload detail panel too
-            htmx.ajax('GET', '/filler/task/' + taskId, {target: '#fillerDetail', swap: 'innerHTML'});
+        fetch('/filler/task/' + taskId + '/status', {
+            method: 'POST',
+            headers: _fillerHeaders('application/x-www-form-urlencoded'),
+            body: new URLSearchParams({status: newStatus, status_reason: statusReason})
+        }).then(function(resp) {
+            if (resp.ok) {
+                refreshTaskList();
+                fetch('/filler/task/' + taskId, {headers: _fillerHeaders()})
+                    .then(function(r) { return r.text(); })
+                    .then(function(html) {
+                        var el = document.getElementById('fillerDetail');
+                        if (el) { el.innerHTML = html; htmx.process(el); }
+                    });
+            }
         });
     }
+
+    document.addEventListener('DOMContentLoaded', refreshTaskList);
     </script>
 </body>
 </html>

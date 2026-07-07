@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import re as _re
 import time
 import uuid
 
@@ -8,25 +9,66 @@ import requests
 
 from geoscape import geocode
 
-_PD_DEFAULT = "https://fhir-xrp.digitalhealth.gov.au/fhir"
-_NEAR_RADIUS_KM = 20
+_PD_DEFAULT = "https://sit.healthconnect.digitalhealth.gov.au/adha/hcd-api-router/api/v1/fhir"
 
-_role_cache: dict = {"codes": [], "ts": 0.0}
-_svc_type_cache: dict = {"codes": [], "ts": 0.0}
+_NEAR_RADIUS_KM = 20
 
 
 def pd_server():
     return os.environ.get("PD_SERVER", _PD_DEFAULT).rstrip("/")
 
 
+class _CircuitBreaker:
+    """
+    Simple circuit breaker: opens on ConnectionError/Timeout, tries again
+    after _RETRY_SECS (half-open). Lets the demo fall back to local data
+    when the live PD endpoint is unreachable.
+    """
+    _RETRY_SECS = 30
+
+    def __init__(self):
+        self._open = False
+        self._opened_at = 0.0
+
+    def record_error(self, exc: Exception) -> None:
+        if isinstance(exc, (requests.exceptions.ConnectionError,
+                            requests.exceptions.Timeout)):
+            self._open = True
+            self._opened_at = time.time()
+
+    def record_success(self) -> None:
+        self._open = False
+
+    @property
+    def is_open(self) -> bool:
+        if not self._open:
+            return False
+        if time.time() - self._opened_at >= self._RETRY_SECS:
+            return False  # half-open: allow one attempt
+        return True
+
+
+_pd_breaker = _CircuitBreaker()
+
+
 def _fhir_get(url, params):
+    request_id = os.environ.get("HCPD_REQUEST_ID") or str(uuid.uuid4())
     headers = {
         "Accept": "application/fhir+json",
-        "X-Request-ID": str(uuid.uuid4()),
+        "X-Request-ID": request_id,
+        # Azure Application Gateway blocks the default python-requests User-Agent
+        "User-Agent": "Mozilla/5.0 (compatible; PatientReferralApp/1.0)",
     }
-    resp = requests.get(url, params=params, headers=headers, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        result = resp.json()
+        _pd_breaker.record_success()
+        return result
+    except (requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout) as exc:
+        _pd_breaker.record_error(exc)
+        raise
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -67,84 +109,62 @@ def _hpio(resource):
 
 
 def _specialty_text(svc):
-    for s in svc.get("specialty", []):
-        text = s.get("text", "")
-        if not text:
-            codings = s.get("coding", [])
-            text = codings[0].get("display", "") if codings else ""
-        if text:
-            return text
+    # Prefer the FHIR specialty element; fall back to type (used by HCPD services)
+    for field in ("specialty", "type"):
+        for s in svc.get(field, []):
+            text = s.get("text", "")
+            if not text:
+                codings = s.get("coding", [])
+                text = codings[0].get("display", "") if codings else ""
+            if text:
+                return text
     return ""
 
 
+# HC PD IG defines a fixed set of SNOMED service type and role codes.
+# The endpoint rejects blank searches, so these are hardcoded from the IG and Bruno tests.
+_SCT = "http://snomed.info/sct"
+
+_HCPD_SERVICE_TYPES: list = [
+    {"system": _SCT, "code": "394814009",        "display": "General practice"},
+    {"system": _SCT, "code": "788007007",        "display": "General practice service"},
+    {"system": _SCT, "code": "789718008",        "display": "Cardiology service"},
+    {"system": _SCT, "code": "310123008",        "display": "Clinical psychology service"},
+    {"system": _SCT, "code": "310074003",        "display": "Diagnostic pathology service"},
+    {"system": _SCT, "code": "1584801000168109", "display": "Geriatric evaluation and management service"},
+    {"system": _SCT, "code": "1223131000168107", "display": "Allied health service"},
+    {"system": _SCT, "code": "708170008",        "display": "Aged care service"},
+    {"system": _SCT, "code": "310080006",        "display": "Radiology service"},
+    {"system": _SCT, "code": "310102000",        "display": "Rheumatology service"},
+    {"system": _SCT, "code": "310113003",        "display": "Oncology service"},
+    {"system": _SCT, "code": "310078000",        "display": "Neurology service"},
+    {"system": _SCT, "code": "310099002",        "display": "Endocrinology service"},
+]
+
+_HCPD_ROLE_CODES: list = [
+    {"system": _SCT, "code": "408443003", "display": "General medical practitioner"},
+    {"system": _SCT, "code": "17561000",  "display": "Cardiologist"},
+    {"system": _SCT, "code": "763292005", "display": "Radiation oncologist"},
+    {"system": _SCT, "code": "28229004",  "display": "Physiotherapist"},
+    {"system": _SCT, "code": "80546007",  "display": "Occupational therapist"},
+    {"system": _SCT, "code": "159026005", "display": "Psychologist"},
+    {"system": _SCT, "code": "182211004", "display": "Consultant physician"},
+    {"system": _SCT, "code": "405623001", "display": "Pathologist"},
+    {"system": _SCT, "code": "41672002",  "display": "Respiratory physician"},
+    {"system": _SCT, "code": "11911009",  "display": "Nephrologist"},
+    {"system": _SCT, "code": "309367003", "display": "Gastroenterologist"},
+    {"system": _SCT, "code": "21450003",  "display": "Neurologist"},
+]
+
+
 def _get_pd_roles() -> list:
-    """Fetch and cache the unique PractitionerRole codes from the Provider Directory (1-hour TTL)."""
-    now = time.time()
-    if _role_cache["codes"] and now - _role_cache["ts"] < 3600:
-        return _role_cache["codes"]
-
-    try:
-        data = _fhir_get(
-            f"{pd_server()}/PractitionerRole",
-            {"_count": 200, "_elements": "code", "_format": "json"},
-        )
-    except Exception as exc:
-        logging.warning(f"PD role cache fetch failed: {exc}")
-        return _role_cache["codes"]
-
-    seen: dict = {}
-    for entry in data.get("entry", []):
-        r = entry.get("resource", {})
-        if r.get("resourceType") != "PractitionerRole":
-            continue
-        for code_cc in r.get("code", []):
-            for coding in code_cc.get("coding", []):
-                code = coding.get("code", "")
-                display = coding.get("display", "")
-                system = coding.get("system", "")
-                key = (system, code)
-                if code and display and key not in seen:
-                    seen[key] = {"system": system, "code": code, "display": display}
-
-    result = sorted(seen.values(), key=lambda x: x["display"])
-    _role_cache["codes"] = result
-    _role_cache["ts"] = now
-    return result
+    """Return known HC PD PractitionerRole codes (hardcoded from the HC PD IG)."""
+    return _HCPD_ROLE_CODES
 
 
 def _get_pd_service_types() -> list:
-    """Fetch and cache unique HealthcareService type codes from the Provider Directory (1-hour TTL)."""
-    now = time.time()
-    if _svc_type_cache["codes"] and now - _svc_type_cache["ts"] < 3600:
-        return _svc_type_cache["codes"]
-
-    try:
-        data = _fhir_get(
-            f"{pd_server()}/HealthcareService",
-            {"_count": 200, "_elements": "type", "_format": "json"},
-        )
-    except Exception as exc:
-        logging.warning(f"PD service type cache fetch failed: {exc}")
-        return _svc_type_cache["codes"]
-
-    seen: dict = {}
-    for entry in data.get("entry", []):
-        r = entry.get("resource", {})
-        if r.get("resourceType") != "HealthcareService":
-            continue
-        for type_cc in r.get("type", []):
-            for coding in type_cc.get("coding", []):
-                code = coding.get("code", "")
-                display = coding.get("display", "")
-                system = coding.get("system", "http://snomed.info/sct")
-                key = (system, code)
-                if code and display and key not in seen:
-                    seen[key] = {"system": system, "code": code, "display": display}
-
-    result = sorted(seen.values(), key=lambda x: x["display"])
-    _svc_type_cache["codes"] = result
-    _svc_type_cache["ts"] = now
-    return result
+    """Return known HC PD HealthcareService type codes (hardcoded from the HC PD IG)."""
+    return _HCPD_SERVICE_TYPES
 
 
 def search_roles(query: str) -> list:
@@ -285,6 +305,126 @@ def _parse_name_bundle(data):
     return results
 
 
+def _parse_org_search_bundle(data: dict) -> list:
+    """
+    Parse an Organization name-search bundle that includes revincluded Location,
+    HealthcareService, and PractitionerRole resources.
+
+    Priority: HealthcareService (drill-in) → PractitionerRole (select) → Location (drill-in).
+    """
+    orgs: dict = {}
+    locations: dict = {}
+    services: dict = {}
+    practitioners: dict = {}
+    roles: list = []
+
+    for entry in data.get("entry", []):
+        r = entry.get("resource", {})
+        rt = r.get("resourceType")
+        if rt == "Organization":
+            orgs[r["id"]] = r
+        elif rt == "Location":
+            locations[r["id"]] = r
+        elif rt == "HealthcareService":
+            services[r["id"]] = r
+        elif rt == "Practitioner":
+            practitioners[r["id"]] = r
+        elif rt == "PractitionerRole":
+            roles.append(r)
+
+    results: list = []
+    seen: set = set()
+
+    for svc_id, svc in services.items():
+        ref = f"HealthcareService/{svc_id}"
+        if ref in seen:
+            continue
+        seen.add(ref)
+        org_ref = svc.get("providedBy", {}).get("reference", "")
+        org_id = org_ref.split("/")[-1] if "/" in org_ref else org_ref
+        org = orgs.get(org_id, {})
+        org_name = org.get("name", "") or svc.get("providedBy", {}).get("display", "")
+        addr = _address_text(org)
+        if not addr:
+            for loc_ref in svc.get("location", []):
+                loc_id = loc_ref.get("reference", "").split("/")[-1]
+                addr = _address_text(locations.get(loc_id, {}))
+                if addr:
+                    break
+        results.append({
+            "name": svc.get("name", "—"),
+            "specialty": _specialty_text(svc),
+            "org": org_name,
+            "address": addr,
+            "hpio": _hpio(org),
+            "reference": ref,
+            "resource_type": "HealthcareService",
+            "distance_km": None,
+        })
+
+    for role in roles:
+        role_ref = f"PractitionerRole/{role.get('id', '')}"
+        if role_ref in seen:
+            continue
+        seen.add(role_ref)
+        prac_ref = role.get("practitioner", {}).get("reference", "")
+        prac_id = prac_ref.split("/")[-1] if prac_ref else ""
+        prac_name = _practitioner_display_name(practitioners.get(prac_id, {}), role)
+        org_ref = role.get("organization", {}).get("reference", "")
+        org_id = org_ref.split("/")[-1] if org_ref else ""
+        org = orgs.get(org_id, {})
+        org_name = org.get("name", "") or role.get("organization", {}).get("display", "")
+        loc_id = ""
+        for loc_ref_obj in role.get("location", []):
+            loc_id = loc_ref_obj.get("reference", "").split("/")[-1]
+            break
+        loc = locations.get(loc_id, {})
+        addr = _address_text(loc) or _address_text(org)
+        specialty = ""
+        for coding_entry in role.get("code", [{}]):
+            for c in coding_entry.get("coding", []):
+                specialty = c.get("display", "")
+                if specialty:
+                    break
+            if specialty:
+                break
+        results.append({
+            "name": prac_name or "—",
+            "specialty": specialty,
+            "org": org_name,
+            "address": addr,
+            "hpio": _hpio(org),
+            "reference": role_ref,
+            "resource_type": "PractitionerRole",
+            "distance_km": None,
+        })
+
+    # Fall back to Location entries when the org has no HealthcareService or roles
+    if not results:
+        for loc_id, loc in locations.items():
+            ref = f"Location/{loc_id}"
+            if ref in seen:
+                continue
+            seen.add(ref)
+            org_ref = loc.get("managingOrganization", {}).get("reference", "")
+            org_id = org_ref.split("/")[-1] if "/" in org_ref else org_ref
+            org = orgs.get(org_id, {})
+            org_name = org.get("name", "") or loc.get("managingOrganization", {}).get("display", "")
+            addr = _address_text(loc) or _address_text(org)
+            results.append({
+                "name": loc.get("name", org_name or "—"),
+                "specialty": _specialty_text(org),
+                "org": org_name,
+                "address": addr,
+                "hpio": _hpio(org),
+                "reference": ref,
+                "resource_type": "HealthcareService",
+                "distance_km": None,
+            })
+
+    return results[:10]
+
+
 def _practitioner_display_name(prac: dict, role: dict) -> str:
     """Extract a display name from a Practitioner resource, falling back to the role reference display."""
     name_parts = (prac.get("name") or [{}])[0]
@@ -409,9 +549,6 @@ def _parse_practitioner_role_bundle(data, query_lat=None, query_lon=None):
     return results[:10]
 
 
-import re as _re
-
-
 _SPECIALTY_SUFFIXES = (
     "ology", "iatry", "iatrics", "surgery", "surgeon",
     "therapy", "therapist", "ician", "iatrist",
@@ -460,11 +597,19 @@ def search_unified(query: str) -> list:
         → service results (click to drill into practitioners).
 
     Non-geo results from both name searches are merged and deduplicated.
+    Falls back to local demo data (pd_fallback) when the PD API is unreachable.
     """
     q = query.strip()
     if not q:
         return []
+
+    if _pd_breaker.is_open:
+        logging.warning("PD circuit open — using local fallback for %r", q)
+        from pd_fallback import search_fallback
+        return search_fallback(q)
+
     server = pd_server()
+    _any_fail = False  # tracks whether every live call errored (network or HTTP)
 
     # ── Geographic path: postcode or geocodable suburb/address ───────────────
     if _looks_geographic(q):
@@ -484,12 +629,14 @@ def search_unified(query: str) -> list:
                 if results:
                     return results
             except Exception as exc:
+                _any_fail = True
                 logging.warning(f"Unified geo search failed: {exc}")
         # fall through to text search if geo returned nothing
 
     # ── Text path: practitioner name + service name ───────────────────────────
     results: list = []
     seen: set = set()
+    _text_attempts = 0  # live calls attempted in the text path
 
     def _add(items):
         for r in items:
@@ -497,10 +644,14 @@ def search_unified(query: str) -> list:
                 seen.add(r["reference"])
                 results.append(r)
 
-    # 1. Practitioner name → PractitionerRole + their linked resources via _revinclude/_include
+    # 1. Practitioner name — HC PD SEARCH-08.02 pattern: each word as a separate name=
+    #    param (OR logic on the server).  "Sarah Chen" → name=Sarah&name=Chen finds
+    #    the practitioner whose given/family are stored separately.
+    _name_params = q.split() if len(q.split()) > 1 else [q]
+    _text_attempts += 1
     try:
         data = _fhir_get(f"{server}/Practitioner", {
-            "name": q,
+            "name": _name_params,
             "_revinclude": "PractitionerRole:practitioner",
             "_include:iterate": [
                 "PractitionerRole:service",
@@ -512,18 +663,21 @@ def search_unified(query: str) -> list:
         })
         _add(_parse_practitioner_role_bundle(data))
     except Exception as exc:
+        _any_fail = True
         logging.warning(f"Practitioner name search failed: {exc}")
 
-    # 2. HealthcareService name → service / org results
+    # 2. HealthcareService name (partial match) → service / org results
+    _text_attempts += 1
     try:
         data = _fhir_get(f"{server}/HealthcareService", {
-            "name": q,
+            "name:contains": q,
             "_include": ["HealthcareService:organization", "HealthcareService:location"],
             "_count": 10,
             "_format": "json",
         })
         _add(_parse_name_bundle(data))
     except Exception as exc:
+        _any_fail = True
         logging.warning(f"HS name search failed: {exc}")
 
     # 3. Service-type token search — match query against known HealthcareService type
@@ -535,6 +689,7 @@ def search_unified(query: str) -> list:
         None,
     )
     if matched_type:
+        _text_attempts += 1
         try:
             data = _fhir_get(f"{server}/HealthcareService", {
                 "service-type": f"{matched_type['system']}|{matched_type['code']}",
@@ -544,12 +699,14 @@ def search_unified(query: str) -> list:
             })
             _add(_parse_name_bundle(data))
         except Exception as exc:
+            _any_fail = True
             logging.warning(f"HS service-type search failed: {exc}")
 
     # 4. PractitionerRole code search — match query against known role codes
     #    (e.g. "Psychology" → "Psychologist" role code).
     matched_roles = [r for r in _get_pd_roles() if q_lower in r["display"].lower()]
     for role in matched_roles[:2]:
+        _text_attempts += 1
         try:
             data = _fhir_get(f"{server}/PractitionerRole", {
                 "role": f"{role['system']}|{role['code']}",
@@ -563,20 +720,82 @@ def search_unified(query: str) -> list:
             })
             _add(_parse_practitioner_role_bundle(data))
         except Exception as exc:
+            _any_fail = True
             logging.warning(f"PractitionerRole role search failed: {exc}")
+
+    # 5. Organization name search — catches "Wesley Health Care Cronulla" etc.
+    #    Try the full query as name:contains, then (for multi-word queries) split
+    #    the last word off as a potential city/postcode qualifier.
+    _org_variants: list = [{"name:contains": q}]
+    _words = q.split()
+    if len(_words) > 1:
+        _last = _words[-1]
+        _prefix = " ".join(_words[:-1])
+        if _re.match(r'^\d{4}$', _last):
+            _org_variants.append({"name:contains": _prefix, "address-postalcode": _last})
+        else:
+            _org_variants.append({"name:contains": _prefix, "address-city": _last})
+
+    for _org_extra in _org_variants:
+        _text_attempts += 1
+        try:
+            data = _fhir_get(f"{server}/Organization", {
+                **_org_extra,
+                "_revinclude": [
+                    "Location:organization",
+                    "HealthcareService:organization",
+                    "PractitionerRole:organization",
+                ],
+                "_include:iterate": "PractitionerRole:practitioner",
+                "_count": 10,
+                "_format": "json",
+            })
+            _add(_parse_org_search_bundle(data))
+        except Exception as exc:
+            _any_fail = True
+            logging.warning(f"Org name search failed: {exc}")
+
+    # Fall back to local demo data when:
+    #   • the circuit opened during this call (connection/timeout), OR
+    #   • every text-path attempt failed (e.g. 403/5xx on all endpoints)
+    #     and no results were found
+    if not results and (_pd_breaker.is_open or (_any_fail and _text_attempts > 0)):
+        logging.warning("PD unavailable/all-failed — using local fallback for %r", q)
+        from pd_fallback import search_fallback
+        return search_fallback(q)
 
     return results[:10]
 
 
-def search_practitioners_by_service(service_id: str) -> list:
+def search_practitioners_by_service(service_ref: str) -> list:
     """
-    Return PractitionerRoles linked to a specific HealthcareService.
-    Results include Practitioner name and role code for display in the
-    practitioner picker after an org is selected from the typeahead.
+    Return PractitionerRoles linked to a HealthcareService or Location.
+
+    Accepts either a full FHIR reference ("HealthcareService/id", "Location/id")
+    or a bare ID (assumed HealthcareService).  Location references use the
+    `location` search param; everything else uses `service`.
+
+    Falls back to demo data for fallback IDs or when the PD is unreachable.
     """
+    # Normalise: split "ResourceType/id" → (type, bare_id)
+    if "/" in service_ref:
+        ref_type, service_id = service_ref.split("/", 1)
+    else:
+        ref_type, service_id = "HealthcareService", service_ref
+
+    # Demo service IDs (from pd_fallback) always go straight to the fallback
+    if service_id.startswith("demo-") or service_id.startswith("example-healthconnect-"):
+        from pd_fallback import search_practitioners_fallback
+        return search_practitioners_fallback(service_id)
+
+    if _pd_breaker.is_open:
+        from pd_fallback import search_practitioners_fallback
+        return search_practitioners_fallback(service_id)
+
     server = pd_server()
+    search_param = "location" if ref_type == "Location" else "service"
     params = {
-        "service": service_id,
+        search_param: service_id,
         "_include": [
             "PractitionerRole:practitioner",
             "PractitionerRole:organization",
@@ -588,8 +807,9 @@ def search_practitioners_by_service(service_id: str) -> list:
     try:
         data = _fhir_get(f"{server}/PractitionerRole", params)
     except Exception as exc:
-        logging.warning(f"Practitioners by service {service_id!r} failed: {exc}")
-        return []
+        logging.warning(f"Practitioners by service {service_ref!r} failed: {exc}")
+        from pd_fallback import search_practitioners_fallback
+        return search_practitioners_fallback(service_id)
 
     practitioners: dict = {}
     orgs: dict = {}
@@ -678,6 +898,10 @@ def search_providers(name="", specialty="", suburb="",
     Returns up to 10 dicts compatible with provider_results.html:
         {name, org, specialty, address, hpio, reference, resource_type, distance_km}
     """
+    if _pd_breaker.is_open:
+        from pd_fallback import search_providers_fallback
+        return search_providers_fallback(name or specialty or suburb)
+
     server = pd_server()
 
     # ── Role-based path (PractitionerRole.code / SNOMED occupation code) ─────
@@ -741,6 +965,7 @@ def search_providers(name="", specialty="", suburb="",
         data = _fhir_get(f"{server}/HealthcareService", params)
     except Exception as exc:
         logging.warning(f"Provider Directory name search failed: {exc}")
-        return []
+        from pd_fallback import search_providers_fallback
+        return search_providers_fallback(query)
 
     return _parse_name_bundle(data)

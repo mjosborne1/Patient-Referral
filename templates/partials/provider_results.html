@@ -5,7 +5,7 @@
     <strong>{{ context_label }}</strong>
     <button type="button" class="btn btn-link btn-sm py-0 px-1 text-secondary float-end"
             style="font-size:0.85em; line-height:1;"
-            onclick="document.getElementById('pdResults').innerHTML='<div class=\'text-muted small px-2 py-2\'>Search the HC Provider Directory above, or enter details manually below.</div>'; document.getElementById('pdSearchName').value='';"
+            onclick="document.getElementById('pdResults').innerHTML='<div class=\'text-muted small px-2 py-2\'>Search the HC Provider Directory above, or enter details manually below.</div>'; var s=document.getElementById('pdUnifiedSearch'); if(s) s.value='';"
             title="Clear">
         <i class="fas fa-times"></i>
     </button>
@@ -21,7 +21,8 @@
         onclick="selectOrgAndLoadPractitioners(
             {{ p.reference | tojson | forceescape }},
             {{ p.name | tojson | forceescape }},
-            {{ p.org | tojson | forceescape }}
+            {{ p.org | tojson | forceescape }},
+            {{ p.specialty | tojson | forceescape }}
         )">
         <div class="d-flex justify-content-between align-items-start">
             <div>
