@@ -16,7 +16,15 @@
     <tr class="filler-task-row" id="task-row-{{ t.id }}" style="cursor:pointer;"
         onclick="viewTask('{{ t.id }}')">
         <td class="text-nowrap">
-            <small>{{ t.patient_display or t.patient_ref }}</small>
+            <small class="patient-tip"
+                   data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="right"
+                   data-pt-name="{{ t.patient_name }}"
+                   data-pt-dob="{{ t.patient_dob }}"
+                   data-pt-address="{{ t.patient_address }}"
+                   data-pt-phone="{{ t.patient_phone }}"
+                   style="cursor:help; text-decoration:underline dotted; text-underline-offset:2px;">
+                {{ t.patient_name }}
+            </small>
         </td>
         <td>
             <span class="fw-semibold" style="font-size:0.88em;">{{ t.service_code }}</span>

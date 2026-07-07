@@ -131,6 +131,24 @@
         return h;
     }
 
+    function initTooltips(container) {
+        (container || document.body).querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+            var parts = [];
+            var name = el.getAttribute('data-pt-name');
+            var dob  = el.getAttribute('data-pt-dob');
+            var addr = el.getAttribute('data-pt-address');
+            var phone = el.getAttribute('data-pt-phone');
+            if (name)  parts.push('<strong>' + name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</strong>');
+            if (dob)   parts.push('<small class="text-white-50">DOB: ' + dob + '</small>');
+            if (addr)  parts.push('<small class="text-white-50">' + addr.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</small>');
+            if (phone) parts.push('<small class="text-white-50">' + phone.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</small>');
+            if (parts.length) {
+                el.setAttribute('data-bs-title', parts.join('<br>'));
+            }
+            bootstrap.Tooltip.getOrCreateInstance(el, {html: true});
+        });
+    }
+
     function refreshTaskList() {
         var sel = document.getElementById('statusFilter');
         var filter = sel ? sel.value : '';
@@ -142,7 +160,7 @@
             .then(function(resp) { return resp.text(); })
             .then(function(html) {
                 var el = document.getElementById('fillerTaskList');
-                if (el) { el.innerHTML = html; htmx.process(el); }
+                if (el) { el.innerHTML = html; htmx.process(el); initTooltips(el); }
             });
     }
 

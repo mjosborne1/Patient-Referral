@@ -1,5 +1,6 @@
 import os
 import requests
+import urllib3
 from datetime import datetime
 from dotenv import load_dotenv
 from typing import Optional, Tuple, Union
@@ -19,6 +20,12 @@ def fhir_get(path, fhir_server_url=None, auth_credentials=_UNSET, bearer_token=N
       - None              → explicitly unauthenticated, skip env-var fallback
     bearer_token: if provided, use Bearer token auth instead of Basic auth
     """
+    # Read at call time so load_dotenv() in app.py has already run.
+    # Set FHIR_VERIFY_SSL=false in .env for servers with untrusted certificates.
+    verify_ssl = os.environ.get('FHIR_VERIFY_SSL', 'true').lower() not in ('false', '0', 'no')
+    if not verify_ssl:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     base_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL')
     url = ''
     if base_url:
@@ -29,7 +36,7 @@ def fhir_get(path, fhir_server_url=None, auth_credentials=_UNSET, bearer_token=N
         headers = kwargs.pop('headers', {})
         headers['Authorization'] = f'Bearer {bearer_token}'
         print(f'Attempting get {url} using Bearer token')
-        return requests.get(url, headers=headers, **kwargs)
+        return requests.get(url, headers=headers, verify=verify_ssl, **kwargs)
 
     if auth_credentials is _UNSET:
         # Caller didn't specify — fall back to environment
@@ -39,13 +46,13 @@ def fhir_get(path, fhir_server_url=None, auth_credentials=_UNSET, bearer_token=N
     else:
         # None → unauthenticated; tuple → use it
         auth = auth_credentials  # type: ignore[assignment]
-    
+
     if auth:
         print(f'Attempting get {url} using auth {auth[0]}:*****')  # Hide password in logs
-        return requests.get(url, auth=auth, **kwargs)
+        return requests.get(url, auth=auth, verify=verify_ssl, **kwargs)
     else:
         print(f'Attempting get {url} with no auth')
-        return requests.get(url, **kwargs)
+        return requests.get(url, verify=verify_ssl, **kwargs)
 
 def format_fhir_date(date_str, fmt="D"):
     """

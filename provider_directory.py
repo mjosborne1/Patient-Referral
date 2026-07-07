@@ -762,7 +762,17 @@ def search_unified(query: str) -> list:
     if not results and (_pd_breaker.is_open or (_any_fail and _text_attempts > 0)):
         logging.warning("PD unavailable/all-failed — using local fallback for %r", q)
         from pd_fallback import search_fallback
-        return search_fallback(q)
+        results = search_fallback(q)
+
+    # If the query contained a postcode (e.g. "Cardiology 2041"), annotate results
+    # whose address contains that postcode with 0.0 km — the geo path was skipped
+    # because the query wasn't purely geographic, so distance_km is otherwise None.
+    _pc = _re.search(r'\b(\d{4})\b', q)
+    if _pc:
+        _postcode = _pc.group(1)
+        for r in results:
+            if r.get('distance_km') is None and _postcode in r.get('address', ''):
+                r['distance_km'] = 0.0
 
     return results[:10]
 

@@ -513,6 +513,17 @@ def probe_for_total_count(current_page, per_page):
         logging.warning(f"Error during total count probe: {e}")
         return None
 
+def _is_mpi_require_search_error(response) -> bool:
+    """True when a FHIR server refuses a broad Patient query requiring specific search params."""
+    if response.status_code not in (400, 422, 500):
+        return False
+    try:
+        text = response.text.lower()
+        return 'missing required field' in text or 'required field' in text or 'firstname' in text
+    except Exception:
+        return False
+
+
 @app.route('/fhir/Patients')
 @login_required
 def get_patients():
@@ -534,11 +545,29 @@ def get_patients():
     if search_term:
         # Handle search with pagination
         try:
-            # For search, we need to fetch more records to filter client-side
-            response = fhir_get("/Patient?_count=1000", fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials(), timeout=10)
+            # Use server-side name search — avoids MPI "Missing required field" errors
+            # that occur when fetching all patients without criteria.
+            from urllib.parse import quote as _url_quote
+            search_url = f"/Patient?name={_url_quote(search_term)}&_count=50"
+            response = fhir_get(search_url, fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials(), timeout=10)
+
+            # Some MPI servers reject the FHIR `name` parameter and need specific
+            # given/family params.  Try a fallback split on the search term.
+            if response.status_code not in (200,) and _is_mpi_require_search_error(response):
+                words = search_term.split()
+                fallback_params = f"_firstName={_url_quote(words[0])}"
+                if len(words) > 1:
+                    fallback_params += f"&_lastName={_url_quote(words[-1])}"
+                response = fhir_get(
+                    f"/Patient?{fallback_params}&_count=50",
+                    fhir_server_url=get_fhir_server_url(),
+                    auth_credentials=get_fhir_auth_credentials(),
+                    timeout=10,
+                )
+
             if response.status_code == 200:
                 patients = response.json().get('entry', [])
-                # Filter patients by name (case-insensitive, anywhere in given or family)
+                # Client-side filter for accuracy (server may return partial/broad matches)
                 filtered_patients = []
                 for entry in patients:
                     resource = entry.get('resource', {})
@@ -549,44 +578,43 @@ def get_patients():
                         full_name = f"{given_names} {family_name}".strip().lower()
                         if search_term in full_name:
                             filtered_patients.append(entry)
-                            break  # Only need to match one name per patient
-                
-                # Apply pagination to filtered results (client-side pagination for search)
-                skip = (page - 1) * per_page
-                total_filtered = len(filtered_patients)
-                paginated_patients = filtered_patients[skip:skip + per_page]
-                
-                processed_patients = process_patient_results(paginated_patients)
-                
-                # Calculate pagination info for filtered results
-                total_pages = max(1, (total_filtered + per_page - 1) // per_page) if total_filtered > 0 else 1
-                has_next = page < total_pages and total_filtered > 0
-                has_prev = page > 1
-                
-                # For HTMX requests targeting table body only, return just the table body with pagination info
-                # For HTMX requests targeting content or no target specified, return full page
-                hx_target = request.headers.get('HX-Target', '')
-                if request.headers.get('HX-Request') and 'patients-table-body' in hx_target:
-                    response_html = render_template('patient_table_body.html', patients=processed_patients)
-                    resp = make_response(response_html)
-                    resp.headers['X-Current-Page'] = str(page)
-                    resp.headers['X-Total-Pages'] = str(total_pages)
-                    resp.headers['X-Total-Items'] = str(total_filtered)
-                    resp.headers['X-Per-Page'] = str(per_page)
-                    resp.headers['X-Has-Next'] = str(has_next).lower()
-                    resp.headers['X-Has-Prev'] = str(has_prev).lower()
-                    return resp
-                else:
-                    return render_template('patients.html', 
-                                         patients=processed_patients,
-                                         current_page=page,
-                                         total_pages=total_pages,
-                                         total_items=total_filtered,
-                                         per_page=per_page,
-                                         has_next=has_next,
-                                         has_prev=has_prev)
+                            break
+                # If server already filtered precisely, just use what we got
+                if not filtered_patients:
+                    filtered_patients = patients
             else:
-                return jsonify({"error": "Failed to search patients"}), 500
+                logging.error(f"Patient search failed: {response.status_code} {response.text[:200]}")
+                filtered_patients = []
+
+            # Apply pagination
+            skip = (page - 1) * per_page
+            total_filtered = len(filtered_patients)
+            paginated_patients = filtered_patients[skip:skip + per_page]
+            processed_patients = process_patient_results(paginated_patients)
+            total_pages = max(1, (total_filtered + per_page - 1) // per_page) if total_filtered > 0 else 1
+            has_next = page < total_pages and total_filtered > 0
+            has_prev = page > 1
+
+            hx_target = request.headers.get('HX-Target', '')
+            if request.headers.get('HX-Request') and 'patients-table-body' in hx_target:
+                response_html = render_template('patient_table_body.html', patients=processed_patients)
+                resp = make_response(response_html)
+                resp.headers['X-Current-Page'] = str(page)
+                resp.headers['X-Total-Pages'] = str(total_pages)
+                resp.headers['X-Total-Items'] = str(total_filtered)
+                resp.headers['X-Per-Page'] = str(per_page)
+                resp.headers['X-Has-Next'] = str(has_next).lower()
+                resp.headers['X-Has-Prev'] = str(has_prev).lower()
+                return resp
+            else:
+                return render_template('patients.html',
+                                       patients=processed_patients,
+                                       current_page=page,
+                                       total_pages=total_pages,
+                                       total_items=total_filtered,
+                                       per_page=per_page,
+                                       has_next=has_next,
+                                       has_prev=has_prev)
         except Exception as e:
             logging.error(f"Error searching patients: {e}")
             return jsonify({"error": "Search failed"}), 500
@@ -783,6 +811,26 @@ def get_patients():
                                      per_page=per_page,
                                      has_next=False,
                                      has_prev=False)
+            elif _is_mpi_require_search_error(response):
+                # MPI server requires a patient name to search; return helpful empty state.
+                logging.info("MPI server requires a name search — returning empty patient list with prompt")
+                hx_target = request.headers.get('HX-Target', '')
+                mpi_msg = "This server requires a patient name to search. Please enter a name in the search box above."
+                if request.headers.get('HX-Request') and 'patients-table-body' in hx_target:
+                    resp = make_response(render_template('patient_table_body.html', patients=[]))
+                    for k, v in [('X-Current-Page','1'),('X-Total-Pages','1'),('X-Total-Items','0'),
+                                 ('X-Per-Page',str(per_page)),('X-Has-Next','false'),('X-Has-Prev','false')]:
+                        resp.headers[k] = v
+                    return resp
+                return render_template('patients.html',
+                                       patients=[],
+                                       current_page=1,
+                                       total_pages=1,
+                                       total_items=0,
+                                       per_page=per_page,
+                                       has_next=False,
+                                       has_prev=False,
+                                       error_message=mpi_msg)
             else:
                 logging.error(f"FHIR request failed with status: {response.status_code}, response: {response.text}")
                 return jsonify({"error": "Failed to fetch patients"}), 500
@@ -2727,7 +2775,30 @@ def airport_screen():
 
 # ── Filler / Specialist View (Scenario 1, proposal 04) ─────────────────────
 
-def _parse_task(task_res, service_requests, doc_refs):
+def _parse_patient(pat: dict) -> dict:
+    """Extract display fields (name, dob, phone, address) from a Patient resource."""
+    if not pat:
+        return {}
+    names = pat.get('name') or []
+    name_entry = next((n for n in names if n.get('use') == 'official'), names[0] if names else {})
+    prefix = ' '.join(name_entry.get('prefix', []))
+    given  = ' '.join(name_entry.get('given',  []))
+    family = name_entry.get('family', '')
+    full_name = ' '.join(p for p in [prefix, given, family] if p) or name_entry.get('text', '')
+    phone = next(
+        (tc.get('value', '') for tc in pat.get('telecom', []) if tc.get('system') == 'phone' and tc.get('value')),
+        ''
+    )
+    addr_text = ''
+    for addr in pat.get('address', []):
+        parts = addr.get('line', []) + [addr.get('city', ''), addr.get('state', ''), addr.get('postalCode', '')]
+        addr_text = ', '.join(p for p in parts if p)
+        if addr_text:
+            break
+    return {'name': full_name, 'dob': pat.get('birthDate', ''), 'phone': phone, 'address': addr_text}
+
+
+def _parse_task(task_res, service_requests, doc_refs, patients=None):
     """Extract a flat display dict from a Task resource and included resources."""
     sr_ref = task_res.get('focus', {}).get('reference', '')
     sr_id = sr_ref.split('/')[-1] if '/' in sr_ref else sr_ref
@@ -2775,6 +2846,9 @@ def _parse_task(task_res, service_requests, doc_refs):
 
     patient_ref = task_res.get('for', {}).get('reference', '')
     patient_display = task_res.get('for', {}).get('display', '')
+    pat_id = patient_ref.split('/')[-1] if '/' in patient_ref else patient_ref
+    patient_info = _parse_patient((patients or {}).get(pat_id, {}))
+    patient_name = patient_info.get('name') or patient_display or patient_ref
 
     return {
         'id': task_res.get('id', ''),
@@ -2787,6 +2861,10 @@ def _parse_task(task_res, service_requests, doc_refs):
         'reason': reason,
         'patient_ref': patient_ref,
         'patient_display': patient_display,
+        'patient_name':    patient_name,
+        'patient_dob':     patient_info.get('dob', ''),
+        'patient_phone':   patient_info.get('phone', ''),
+        'patient_address': patient_info.get('address', ''),
         'requester': task_res.get('requester', {}).get('display', ''),
         'authored_on': task_res.get('authoredOn', ''),
         'clinical_narrative': clinical_narrative,
@@ -2843,6 +2921,7 @@ def _bundle_to_specialist_tasks(data):
     doc_refs = {}
     raw_tasks = []
 
+    patients = {}
     for entry in data.get('entry', []):
         res = entry.get('resource', {})
         rt = res.get('resourceType', '')
@@ -2852,6 +2931,8 @@ def _bundle_to_specialist_tasks(data):
             service_requests[res.get('id', '')] = res
         elif rt == 'DocumentReference':
             doc_refs[res.get('id', '')] = res
+        elif rt == 'Patient':
+            patients[res.get('id', '')] = res
 
     def _is_specialist_referral(task_res):
         sr_ref = task_res.get('focus', {}).get('reference', '')
@@ -2869,7 +2950,7 @@ def _bundle_to_specialist_tasks(data):
             return False
         return _SPECIALIST_CATEGORY in codes
 
-    return [_parse_task(t, service_requests, doc_refs)
+    return [_parse_task(t, service_requests, doc_refs, patients)
             for t in raw_tasks if _is_specialist_referral(t)]
 
 
@@ -2901,12 +2982,13 @@ def filler_task_detail(task_id):
     service_requests = {}
     doc_refs = {}
     task_res = None
+    patients = {}
 
     try:
         # Step 1: search by _id with _include so Task + SR arrive in one call
         resp = requests.get(
             f"{base}/Task",
-            params={'_id': task_id, '_include': 'Task:focus'},
+            params={'_id': task_id, '_include': ['Task:focus', 'Task:patient']},
             **req_kwargs,
         )
         resp.raise_for_status()
@@ -2918,6 +3000,8 @@ def filler_task_detail(task_id):
                 task_res = res
             elif rt == 'ServiceRequest':
                 service_requests[res.get('id', '')] = res
+            elif rt == 'Patient':
+                patients[res.get('id', '')] = res
 
         # Step 2: fetch DocumentReferences from SR.supportingInfo individually
         if task_res:
@@ -2939,7 +3023,7 @@ def filler_task_detail(task_id):
     except Exception as exc:
         logging.warning(f"Filler task detail fetch failed: {exc}")
 
-    task = _parse_task(task_res, service_requests, doc_refs) if task_res else None
+    task = _parse_task(task_res, service_requests, doc_refs, patients) if task_res else None
     return render_template('partials/filler_task_detail.html', task=task), 200
 
 

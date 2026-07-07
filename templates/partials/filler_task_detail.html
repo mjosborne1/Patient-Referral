@@ -23,7 +23,25 @@
     </div>
 
     <table class="table table-sm table-borderless mb-3" style="font-size:0.85em;">
-        <tr><th class="text-muted fw-normal w-35">Patient</th><td>{{ task.patient_display or task.patient_ref }}</td></tr>
+        <tr>
+            <th class="text-muted fw-normal w-35" style="vertical-align:top; padding-top:0.4rem;">Patient</th>
+            <td>
+                <div class="fw-semibold">{{ task.patient_name }}</div>
+                {% if task.patient_dob or task.patient_address or task.patient_phone %}
+                <div class="mt-1 text-muted" style="font-size:0.82em; line-height:1.6;">
+                    {% if task.patient_dob %}
+                    <div><i class="fas fa-birthday-cake fa-fw me-1" style="opacity:0.6;"></i>{{ task.patient_dob }}</div>
+                    {% endif %}
+                    {% if task.patient_address %}
+                    <div><i class="fas fa-map-marker-alt fa-fw me-1" style="opacity:0.6;"></i>{{ task.patient_address }}</div>
+                    {% endif %}
+                    {% if task.patient_phone %}
+                    <div><i class="fas fa-phone fa-fw me-1" style="opacity:0.6;"></i>{{ task.patient_phone }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </td>
+        </tr>
         <tr><th class="text-muted fw-normal">Priority</th><td>{{ task.priority | capitalize }}</td></tr>
         <tr><th class="text-muted fw-normal">Requester</th><td>{{ task.requester }}</td></tr>
         {% if task.performer %}<tr><th class="text-muted fw-normal">Referred to</th><td>{{ task.performer }}</td></tr>{% endif %}
