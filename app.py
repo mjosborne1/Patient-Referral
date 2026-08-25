@@ -1371,16 +1371,30 @@ def get_organisation_by_type(org_type):
     Check Flask logs if the dropdown doesn't populate.
     """
     logging.info(f"get_organisation_by_type called with org_type={org_type}")
-    
+
+    # Different FHIR servers categorise Pathology/Radiology providers under different,
+    # but clinically-equivalent, SNOMED codes (e.g. the connectathon server tags its
+    # pathology org as "Pathology department" 309950003 rather than "Pathology service"
+    # 310074003). Search all known synonyms together via a comma-separated OR.
+    PATHOLOGY_TYPE_CODES = ['310074003', '309950003']  # Pathology service / Pathology department
+    RADIOLOGY_TYPE_CODES = ['708175003', '284546000', '722174002', '722171005']  # Radiology/imaging variants
+    if org_type in PATHOLOGY_TYPE_CODES:
+        search_codes = PATHOLOGY_TYPE_CODES
+    elif org_type in RADIOLOGY_TYPE_CODES:
+        search_codes = RADIOLOGY_TYPE_CODES
+    else:
+        search_codes = [org_type]
+
     # Use SNOMED CT system for organisation type
     system = request.args.get('system', 'http://snomed.info/sct')
-    # Search for organisations with the given type code and system
-    search_url = f"/Organization?type={system}|{org_type}&_count=20"
+    # Search for organisations matching any of the type codes and system
+    type_param = ','.join(f'{system}|{code}' for code in search_codes)
+    search_url = f"/Organization?type={type_param}&_count=20"
     logging.info(f"Searching for organisations: {search_url}")
-    
+
     response = fhir_get(search_url, fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials(), timeout=10)
     logging.info(f"Organisation search response status: {response.status_code}")
-    
+
     if response.status_code != 200:
         logging.warning(f"Failed to fetch organisations. Status: {response.status_code}, Response: {response.text[:200]}")
         return render_template('partials/organisations.html', organisations=[])
@@ -1388,15 +1402,17 @@ def get_organisation_by_type(org_type):
     bundle = response.json()
     entries = bundle.get('entry', [])
     logging.info(f"Found {len(entries)} organisation entries from FHIR server")
-    
+
     organisations = []
-    # For testing SNP orders on pyro server
-    snp_pathology = { "id": "05030000-ac10-0242-f1b3-08dde8e839a8", "name": "Sullivan Nicolaides Pathology" }    
-    qxr_radiology = { "id": "05030000-ac10-0242-030b-08dde9b69fcf", "name": "Queensland X-Ray" } 
-    organisations.append(snp_pathology)
-    organisations.append(qxr_radiology)
-    logging.info("Added 2 hardcoded test organisations (SNP, QXR)")
-    
+    # For testing orders on pyro server — scoped to the matching category only,
+    # so e.g. a Radiology search doesn't also surface a hardcoded Pathology org.
+    if org_type in PATHOLOGY_TYPE_CODES:
+        organisations.append({"id": "05030000-ac10-0242-f1b3-08dde8e839a8", "name": "Sullivan Nicolaides Pathology"})
+        logging.info("Added 1 hardcoded test organisation (SNP)")
+    elif org_type in RADIOLOGY_TYPE_CODES:
+        organisations.append({"id": "05030000-ac10-0242-030b-08dde9b69fcf", "name": "Queensland X-Ray"})
+        logging.info("Added 1 hardcoded test organisation (QXR)")
+
     for entry in entries:
         resource = entry.get('resource', {})
         org_id = resource.get('id', '')

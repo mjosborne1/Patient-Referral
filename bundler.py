@@ -16,6 +16,7 @@
 import uuid
 import datetime
 import logging
+import html
 from json import dumps
 import ast
 
@@ -149,8 +150,9 @@ def generate_narrative_text(resource):
         dict: Narrative object with status and div
     """
     resource_type = resource.get("resourceType", "")
-    narrative_text = f"<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>{resource_type}</h3>"
-    
+    esc = lambda v: html.escape(str(v))
+    narrative_text = f"<div xmlns=\"http://www.w3.org/1999/xhtml\"><h3>{esc(resource_type)}</h3>"
+
     # Helper function to extract display value from coding
     def get_display_value(value):
         if isinstance(value, dict):
@@ -172,71 +174,71 @@ def generate_narrative_text(resource):
         code_display = get_display_value(resource.get("code", {}))
         category_display = get_display_value(resource.get("category", [{}])[0] if resource.get("category") else {})
         
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
-        narrative_text += f"<p><strong>Intent:</strong> {intent}</p>"
-        narrative_text += f"<p><strong>Test:</strong> {code_display}</p>"
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
+        narrative_text += f"<p><strong>Intent:</strong> {esc(intent)}</p>"
+        narrative_text += f"<p><strong>Test:</strong> {esc(code_display)}</p>"
         if category_display:
-            narrative_text += f"<p><strong>Category:</strong> {category_display}</p>"
-        
+            narrative_text += f"<p><strong>Category:</strong> {esc(category_display)}</p>"
+
         # Add sequence if available
         extensions = resource.get("extension", [])
         for ext in extensions:
             if ext.get("url") == "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-displaysequence":
                 sequence = ext.get("valueInteger", "")
-                narrative_text += f"<p><strong>Sequence:</strong> {sequence}</p>"
-        
+                narrative_text += f"<p><strong>Sequence:</strong> {esc(sequence)}</p>"
+
         # Add reasons if available
         reason_codes = resource.get("reasonCode", [])
         if reason_codes:
             reasons = [get_display_value(reason) for reason in reason_codes]
-            narrative_text += f"<p><strong>Reasons:</strong> {', '.join(reasons)}</p>"
-    
+            narrative_text += f"<p><strong>Reasons:</strong> {esc(', '.join(reasons))}</p>"
+
     elif resource_type == "Encounter":
         status = resource.get("status", "")
         class_display = get_display_value(resource.get("class", {}))
-        
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
-        narrative_text += f"<p><strong>Class:</strong> {class_display}</p>"
-        
+
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
+        narrative_text += f"<p><strong>Class:</strong> {esc(class_display)}</p>"
+
     elif resource_type == "Specimen":
         # Add specimen specific narrative elements
         if "type" in resource:
             type_display = get_display_value(resource["type"])
             if type_display:
-                narrative_text += f"<p><strong>Specimen Type:</strong> {type_display}</p>"
-                
+                narrative_text += f"<p><strong>Specimen Type:</strong> {esc(type_display)}</p>"
+
         if "collection" in resource:
             collection = resource["collection"]
             if "method" in collection:
                 method_display = get_display_value(collection["method"])
                 if method_display:
-                    narrative_text += f"<p><strong>Collection Method:</strong> {method_display}</p>"
-                    
+                    narrative_text += f"<p><strong>Collection Method:</strong> {esc(method_display)}</p>"
+
             if "bodySite" in collection:
                 site_display = get_display_value(collection["bodySite"])
                 if site_display:
-                    narrative_text += f"<p><strong>Body Site:</strong> {site_display}</p>"
-                    
+                    narrative_text += f"<p><strong>Body Site:</strong> {esc(site_display)}</p>"
+
             if "collectedDateTime" in collection:
-                narrative_text += f"<p><strong>Collection Date/Time:</strong> {collection['collectedDateTime']}</p>"
-    
+                narrative_text += f"<p><strong>Collection Date/Time:</strong> {esc(collection['collectedDateTime'])}</p>"
+
     elif resource_type == "Task":
         status = resource.get("status", "")
         intent = resource.get("intent", "")
         description = resource.get("description", "")
-        
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
-        narrative_text += f"<p><strong>Intent:</strong> {intent}</p>"
+
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
+        narrative_text += f"<p><strong>Intent:</strong> {esc(intent)}</p>"
         if description:
-            narrative_text += f"<p><strong>Description:</strong> {description}</p>"
-    
+            narrative_text += f"<p><strong>Description:</strong> {esc(description)}</p>"
+
     elif resource_type == "DocumentReference":
         status = resource.get("status", "")
         type_display = get_display_value(resource.get("type", {}))
-        
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
-        narrative_text += f"<p><strong>Type:</strong> {type_display}</p>"
-        
+
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
+        narrative_text += f"<p><strong>Type:</strong> {esc(type_display)}</p>"
+
         # Add content info
         content = resource.get("content", [])
         if content and len(content) > 0:
@@ -244,54 +246,53 @@ def generate_narrative_text(resource):
             title = attachment.get("title", "")
             content_type = attachment.get("contentType", "")
             data = attachment.get("data", "")
-            
+
             if title:
-                narrative_text += f"<p><strong>Title:</strong> {title}</p>"
+                narrative_text += f"<p><strong>Title:</strong> {esc(title)}</p>"
             if content_type:
-                narrative_text += f"<p><strong>Content Type:</strong> {content_type}</p>"
-            
+                narrative_text += f"<p><strong>Content Type:</strong> {esc(content_type)}</p>"
+
             # Decode and display the clinical context if it's base64 encoded text
             if data and content_type == "text/plain":
                 try:
                     import base64
                     decoded_content = base64.b64decode(data).decode('utf-8')
                     # Escape HTML characters for safe display
-                    import html
                     escaped_content = html.escape(decoded_content)
                     narrative_text += f"<p><strong>Clinical Context:</strong></p>"
                     narrative_text += f"<div style='border: 1px solid #ccc; padding: 10px; margin: 5px 0; background-color: #f9f9f9;'>{escaped_content}</div>"
                 except Exception:
                     # If decoding fails, just show that content is present
                     narrative_text += f"<p><strong>Content:</strong> Encoded clinical notes</p>"
-    
+
     elif resource_type == "CommunicationRequest":
         status = resource.get("status", "")
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
         narrative_text += f"<p>Request for communication regarding patient care.</p>"
-    
+
     elif resource_type == "Consent":
         status = resource.get("status", "")
         scope_display = get_display_value(resource.get("scope", {}))
         category_display = get_display_value(resource.get("category", [{}])[0] if resource.get("category") else {})
-        
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
+
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
         if scope_display:
-            narrative_text += f"<p><strong>Scope:</strong> {scope_display}</p>"
+            narrative_text += f"<p><strong>Scope:</strong> {esc(scope_display)}</p>"
         if category_display:
-            narrative_text += f"<p><strong>Category:</strong> {category_display}</p>"
-        
+            narrative_text += f"<p><strong>Category:</strong> {esc(category_display)}</p>"
+
         provision = resource.get("provision", {})
         if provision:
             provision_type = provision.get("type", "")
-            narrative_text += f"<p><strong>Provision:</strong> {provision_type}</p>"
-    
+            narrative_text += f"<p><strong>Provision:</strong> {esc(provision_type)}</p>"
+
     elif resource_type == "Coverage":
         status = resource.get("status", "")
         type_display = get_display_value(resource.get("type", {}))
-        
-        narrative_text += f"<p><strong>Status:</strong> {status}</p>"
+
+        narrative_text += f"<p><strong>Status:</strong> {esc(status)}</p>"
         if type_display:
-            narrative_text += f"<p><strong>Type:</strong> {type_display}</p>"
+            narrative_text += f"<p><strong>Type:</strong> {esc(type_display)}</p>"
     
     narrative_text += "</div>"
     

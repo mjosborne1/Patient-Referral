@@ -3,11 +3,17 @@ import datetime
 import logging
 import base64
 import random
+import html
 
 
 def _get_localtime_bne():
     utc_plus_10 = datetime.datetime.utcnow() + datetime.timedelta(hours=10)
     return utc_plus_10.strftime("%Y-%m-%dT%H:%M:%S.%f+10:00")
+
+
+def _esc(value) -> str:
+    """Escape a value for safe interpolation into narrative XHTML."""
+    return html.escape(str(value))
 
 
 def _narrative(inner_html: str) -> dict:
@@ -103,15 +109,15 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
             ]
         reason_code = [rc]
 
-    _sr_indication = f" for {indication_display}" if indication_display else ""
-    _sr_performer = f" to {performer_name}" if performer_name else ""
+    _sr_indication = f" for {_esc(indication_display)}" if indication_display else ""
+    _sr_performer = f" to {_esc(performer_name)}" if performer_name else ""
     service_request = {
         "resourceType": "ServiceRequest",
         "id": sr_id,
         "text": _narrative(
-            f"<p><b>Referral:</b> {specialty_display}{_sr_indication}{_sr_performer}</p>"
-            f"<p><b>Priority:</b> {priority} — <b>Requester:</b> {requester_name}"
-            + (f", {requester_org}" if requester_org else "")
+            f"<p><b>Referral:</b> {_esc(specialty_display)}{_sr_indication}{_sr_performer}</p>"
+            f"<p><b>Priority:</b> {_esc(priority)} — <b>Requester:</b> {_esc(requester_name)}"
+            + (f", {_esc(requester_org)}" if requester_org else "")
             + f" — <b>Authored:</b> {now[:10]}</p>"
         ),
         "identifier": [
@@ -182,9 +188,9 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
             ]
         },
         "text": _narrative(
-            f"<p><b>Fulfilment Task</b> for referral {requisition_number}</p>"
-            f"<p><b>Status:</b> requested — <b>Requester:</b> {requester_name}"
-            + (f" — <b>Owner:</b> {performer_org}" if performer_org else "")
+            f"<p><b>Fulfilment Task</b> for referral {_esc(requisition_number)}</p>"
+            f"<p><b>Status:</b> requested — <b>Requester:</b> {_esc(requester_name)}"
+            + (f" — <b>Owner:</b> {_esc(performer_org)}" if performer_org else "")
             + "</p>"
         ),
         "groupIdentifier": {
@@ -220,8 +226,8 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
         "resourceType": "DocumentReference",
         "id": docref_id,
         "text": _narrative(
-            f"<p><b>Clinical Context</b> — authored by {requester_name}, {now[:10]}</p>"
-            + (f"<p>{clinical_narrative}</p>" if clinical_narrative else "")
+            f"<p><b>Clinical Context</b> — authored by {_esc(requester_name)}, {now[:10]}</p>"
+            + (f"<p>{_esc(clinical_narrative)}</p>" if clinical_narrative else "")
         ),
         "status": "current",
         "type": {
@@ -301,7 +307,7 @@ def create_referral_bundle(form_data, fhir_server_url=None, auth_credentials=Non
                     "resourceType": "DocumentReference",
                     "id": ps_docref_id,
                     "text": _narrative(
-                        f"<p><b>AU Patient Summary</b> — endpoint hint: {summary_url}</p>"
+                        f"<p><b>AU Patient Summary</b> — endpoint hint: {_esc(summary_url)}</p>"
                     ),
                     "status": "current",
                     "type": {
