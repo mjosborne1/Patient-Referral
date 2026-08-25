@@ -450,10 +450,12 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
             "reference": f"PractitionerRole/{requester_id}"
         }
         
-        # Fetch and add PractitionerRole resource to the bundle
+        # Fetch and add PractitionerRole resource to the bundle.
+        # _include only works on a search interaction, not a direct by-id read
+        # (Smile CDR rejects the latter with a 400) — so search by _id instead.
         try:
             server_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
-            response = fhir_get(f"/PractitionerRole/{requester_id}?_include=PractitionerRole:practitioner", 
+            response = fhir_get(f"/PractitionerRole?_id={requester_id}&_include=PractitionerRole:practitioner",
                               fhir_server_url=server_url, auth_credentials=auth_credentials, timeout=10)
             if response.status_code == 200:
                 practitioner_role_data = response.json()
