@@ -1085,7 +1085,9 @@ def get_requester_organisations():
     These are organisations whose practitioners can be requesters.
     Excludes Pharmacy, Radiology, and Pathology organisations.
     """
-    # Organisation type codes to exclude (SNOMED CT)
+    # Organisation type codes to exclude (SNOMED CT).
+    # General practice is deliberately NOT excluded here — GPs are a common
+    # ordering/referring practitioner type and must remain selectable.
     EXCLUDED_ORG_TYPE_CODES = {
         '310074003',  # Pathology service
         '722171005',  # Diagnostic imaging service
@@ -1094,7 +1096,6 @@ def get_requester_organisations():
         '264372000',  # Pharmacy
         '80522000',   # Community pharmacy
         '22232009',   # Hospital pharmacy
-        '38341003',   # General practice
     }
     
     # Keywords to exclude from organisation names (case-insensitive)
@@ -1110,17 +1111,43 @@ def get_requester_organisations():
         'lab ',  # with space to avoid matching words like "collaborative"
     ]
     
+    def _is_excluded_org(resource, org_name):
+        org_types = resource.get('type', [])
+        for type_concept in org_types:
+            for coding in type_concept.get('coding', []):
+                if coding.get('code') in EXCLUDED_ORG_TYPE_CODES:
+                    logging.debug(f"Excluding org '{org_name}' by type code: {coding.get('code')}")
+                    return True
+        org_name_lower = org_name.lower()
+        for keyword in EXCLUDED_NAME_KEYWORDS:
+            if keyword in org_name_lower:
+                logging.debug(f"Excluding org '{org_name}' by name keyword: {keyword}")
+                return True
+        return False
+
     # Get all PractitionerRoles with their linked organisations
-    response = fhir_get("/PractitionerRole?_include=PractitionerRole:organization&_count=200", 
-                       fhir_server_url=get_fhir_server_url(), 
-                       auth_credentials=get_fhir_auth_credentials(), 
+    response = fhir_get("/PractitionerRole?_include=PractitionerRole:organization&_count=200",
+                       fhir_server_url=get_fhir_server_url(),
+                       auth_credentials=get_fhir_auth_credentials(),
                        timeout=10)
     if response.status_code != 200:
         return render_template('partials/requester_organisations.html', organisations=[])
 
     bundle = response.json()
     entries = bundle.get('entry', [])
-    
+
+    # Some servers have Organization/Practitioner data but no PractitionerRole
+    # resources linking them yet. Fall back to listing organisations directly
+    # so the feature stays usable rather than silently returning nothing.
+    if not entries:
+        logging.info("No PractitionerRole entries found; falling back to direct Organization search")
+        org_response = fhir_get("/Organization?_count=200",
+                                 fhir_server_url=get_fhir_server_url(),
+                                 auth_credentials=get_fhir_auth_credentials(),
+                                 timeout=10)
+        if org_response.status_code == 200:
+            entries = org_response.json().get('entry', [])
+
     # Count PractitionerRole resources per organization
     practitioner_role_counts = {}
     for entry in entries:
@@ -1131,7 +1158,7 @@ def get_requester_organisations():
                 # Extract organization ID from reference (format: "Organization/xyz")
                 org_id = org_ref.split('/')[-1] if '/' in org_ref else org_ref
                 practitioner_role_counts[org_id] = practitioner_role_counts.get(org_id, 0) + 1
-    
+
     # Build a map of unique organisations, filtering out excluded types
     organisations = {}
     for entry in entries:
@@ -1139,32 +1166,11 @@ def get_requester_organisations():
         if resource.get('resourceType') == 'Organization':
             org_id = resource.get('id')
             org_name = resource.get('name', 'Unknown Organisation')
-            
-            # Check if this organisation has an excluded type code
-            is_excluded = False
-            org_types = resource.get('type', [])
-            for type_concept in org_types:
-                for coding in type_concept.get('coding', []):
-                    if coding.get('code') in EXCLUDED_ORG_TYPE_CODES:
-                        is_excluded = True
-                        logging.debug(f"Excluding org '{org_name}' by type code: {coding.get('code')}")
-                        break
-                if is_excluded:
-                    break
-            
-            # Also check name for excluded keywords
-            if not is_excluded:
-                org_name_lower = org_name.lower()
-                for keyword in EXCLUDED_NAME_KEYWORDS:
-                    if keyword in org_name_lower:
-                        is_excluded = True
-                        logging.debug(f"Excluding org '{org_name}' by name keyword: {keyword}")
-                        break
-            
-            if org_id and org_id not in organisations and not is_excluded:
+
+            if org_id and org_id not in organisations and not _is_excluded_org(resource, org_name):
                 # Include practitioner count for badge display
                 practitioner_count = practitioner_role_counts.get(org_id, 0)
-                
+
                 organisations[org_id] = {
                     "id": org_id,
                     "name": org_name,
@@ -1209,9 +1215,42 @@ def get_requesters():
     bundle = response.json()
     entries = bundle.get('entry', [])
     logging.info(f"Got {len(entries)} entries from PractitionerRole query")
-    
+
+    # Some servers have no PractitionerRole resources at all, so there's no way
+    # to know which organisation a practitioner belongs to. Fall back to listing
+    # every Practitioner as unattached/unverified rather than showing nothing.
+    if not entries:
+        logging.info("No PractitionerRole entries found; falling back to direct Practitioner search")
+        prac_response = fhir_get("/Practitioner?_count=200",
+                                  fhir_server_url=get_fhir_server_url(),
+                                  auth_credentials=get_fhir_auth_credentials(),
+                                  timeout=10)
+        unattached_requesters = []
+        if prac_response.status_code == 200:
+            for entry in prac_response.json().get('entry', []):
+                resource = entry.get('resource', {})
+                if resource.get('resourceType') != 'Practitioner':
+                    continue
+                name = resource.get('name', [{}])[0]
+                full_name = (' '.join(name.get('given', [])) + ' ' + name.get('family', '')).strip()
+                unattached_requesters.append({
+                    "id": resource.get('id'),
+                    "name": full_name or 'Unknown',
+                    "specialty": '',
+                    "attached": False,
+                })
+        unattached_requesters = sorted(unattached_requesters, key=lambda x: x["name"])
+        logging.info(f"Found {len(unattached_requesters)} practitioners via fallback (no organisation link available)")
+        if request.args.get('for') == 'sp':
+            return render_template('partials/sp_requesters.html',
+                                   attached_requesters=[],
+                                   unattached_requesters=unattached_requesters)
+        return render_template('partials/requesters.html',
+                               attached_requesters=[],
+                               unattached_requesters=unattached_requesters)
+
     practitioners = {}
-    
+
     # Build a map of Practitioner id to name
     for entry in entries:
         resource = entry.get('resource', {})
@@ -1221,7 +1260,7 @@ def get_requesters():
             name = resource.get('name', [{}])[0]
             full_name = ' '.join(name.get('given', [])) + ' ' + name.get('family', '')
             practitioners[practitioner_id] = full_name.strip()
-    
+
     logging.info(f"Built practitioner map with {len(practitioners)} practitioners")
 
     attached_requesters = []
