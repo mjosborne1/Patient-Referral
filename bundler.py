@@ -871,40 +871,41 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 "display": f"Specimen: {specimen_type}"
             })
     
+    # Create a single Encounter shared by every ServiceRequest in this bundle
+    encounter_id = str(uuid.uuid4())
+    encounter_ref = f"Encounter/urn:uuid:{encounter_id}" if USE_BROKEN_SMILECDR_MODE else f"urn:uuid:{encounter_id}"
+    encounter_resource = {
+        "resourceType": "Encounter",
+        "meta": {
+            "profile": [
+                "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
+            ]
+        },
+        "id": encounter_id,
+        "status": "planned",
+        "class": {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            "code": "AMB",
+            "display": "ambulatory"
+        },
+        "subject": patient_reference
+    }
+    transaction_bundle["entry"].append({
+        "fullUrl": f"urn:uuid:{encounter_id}",
+        "resource": encounter_resource,
+        "request": {
+            "method": "POST",
+            "url": "Encounter"
+        }
+    })
+
     for i, test in enumerate(tests):
         sr_id = str(uuid.uuid4())
-        encounter_id = str(uuid.uuid4())  # Generate unique encounter ID for each ServiceRequest
-        encounter_ref = f"Encounter/urn:uuid:{encounter_id}" if USE_BROKEN_SMILECDR_MODE else f"urn:uuid:{encounter_id}"
         # Set appropriate profile based on request category
         service_request_profile = "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-path"
         if request_category == "Radiology":
             service_request_profile = "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-servicerequest-imag"
 
-        encounter_resource = {
-            "resourceType": "Encounter",
-            "meta": {
-                "profile": [
-                    "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-encounter"
-                ]
-            },
-            "id": encounter_id,
-            "status": "planned",
-            "class": {
-                "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
-                "code": "AMB",
-                "display": "ambulatory"
-            },
-            "subject": patient_reference
-        }
-        transaction_bundle["entry"].append({
-            "fullUrl": f"urn:uuid:{encounter_id}",
-            "resource": encounter_resource,
-            "request": {
-                "method": "POST",
-                "url": "Encounter"
-            }
-        })
-        
         # Create ServiceRequest
         service_request = {
             "resourceType": "ServiceRequest",
