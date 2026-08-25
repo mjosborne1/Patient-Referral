@@ -347,7 +347,13 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
     
     # Get request category (Pathology or Radiology)
     request_category = form_data.get('requestCategory', 'Pathology')
-    
+
+    # Set the AU eRequesting bundle profile based on request category
+    bundle_profile = "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-bundle-pathologyrequest"
+    if request_category == "Radiology":
+        bundle_profile = "http://hl7.org.au/fhir/ereq/StructureDefinition/au-erequesting-bundle-imagingrequest"
+    transaction_bundle["meta"] = {"profile": [bundle_profile]}
+
     # Inside create_request_bundle function, update the test data handling:
 
     # Extract test and reason data
