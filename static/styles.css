@@ -113,6 +113,14 @@ thead.table-dark {
     background-color: var(--tropical-dark);
 }
 
+/* Cap cell width so a long unbroken value (e.g. a name/address with no spaces)
+   wraps onto multiple lines instead of stretching the column off-screen. */
+.table td {
+    max-width: 260px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 /* Sidebar Styles */
 .sidebar {
     position: fixed;
