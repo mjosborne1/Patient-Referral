@@ -833,13 +833,7 @@ def get_patients():
                                        error_message=mpi_msg)
             else:
                 logging.error(f"FHIR request failed with status: {response.status_code}, response: {response.text}")
-                # TEMPORARY DIAGNOSTIC (2026-08-25): surfacing upstream status/body to debug
-                # a Render-only 500 against a WAF-fronted test server. Revert after diagnosis.
-                return jsonify({
-                    "error": "Failed to fetch patients",
-                    "debug_upstream_status": response.status_code,
-                    "debug_upstream_body": response.text[:1000],
-                }), 500
+                return jsonify({"error": "Failed to fetch patients"}), 500
         except Exception as e:
             logging.error(f"Error in get_patients: {e}")
             return jsonify({"error": "Internal server error"}), 500
