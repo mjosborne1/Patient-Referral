@@ -302,48 +302,64 @@ def generate_narrative_text(resource):
     }
 
 
-def _fetch_and_embed_organization(transaction_bundle, org_id, org_name, fhir_server_url, auth_credentials):
+def _fetch_and_embed_resource(transaction_bundle, resource_type, resource_id, display_name, fhir_server_url, auth_credentials):
     """
-    Fetch an existing Organization by id and embed it in the transaction bundle
-    as a PUT entry, so the bundle contains an actual Organization instance
-    rather than just a bare reference. Falls back to a GET entry (and a
+    Fetch an existing resource by type+id and embed it in the transaction bundle
+    as a PUT entry, so the bundle contains an actual resource instance rather
+    than just a bare reference. Falls back to a GET entry (and a
     reference-only result) if the fetch fails.
 
-    Returns a reference dict suitable for use wherever this organisation is
+    fullUrl is set to urn:uuid:{resource_id} — using the resource's own id
+    rather than a freshly-generated one — so that bundle-internal reference
+    resolution (e.g. PractitionerRole.organization -> this entry) is
+    unambiguous instead of pointing at an unrelated random UUID.
+
+    Returns a reference dict suitable for use wherever this resource is
     referenced elsewhere in the bundle (e.g. performer, requisition.assigner).
     """
-    organization_reference = {"reference": f"Organization/{org_id}"}
-    if org_name:
-        organization_reference["display"] = org_name
+    reference = {"reference": f"{resource_type}/{resource_id}"}
+    if display_name:
+        reference["display"] = display_name
 
     try:
-        response = fhir_get(f"/Organization/{org_id}", fhir_server_url=fhir_server_url,
+        response = fhir_get(f"/{resource_type}/{resource_id}", fhir_server_url=fhir_server_url,
                              auth_credentials=auth_credentials, timeout=10)
         if response.status_code == 200:
-            org_resource = response.json()
-            if org_resource.get('resourceType') == 'Organization':
+            resource = response.json()
+            if resource.get('resourceType') == resource_type:
+                # Strip volatile server-assigned metadata — it describes the
+                # resource's storage on the origin server and is meaningless
+                # (and can look like a dangling internal reference) once
+                # resubmitted inside a new transaction bundle.
+                meta = resource.get('meta')
+                if meta:
+                    trimmed_meta = {k: v for k, v in meta.items() if k == 'profile'}
+                    if trimmed_meta:
+                        resource['meta'] = trimmed_meta
+                    else:
+                        del resource['meta']
                 transaction_bundle["entry"].append({
-                    "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                    "resource": org_resource,
+                    "fullUrl": f"urn:uuid:{resource_id}",
+                    "resource": resource,
                     "request": {
                         "method": "PUT",
-                        "url": f"Organization/{org_id}"
+                        "url": f"{resource_type}/{resource_id}"
                     }
                 })
-                return organization_reference
-        logging.warning(f"Failed to fetch Organization {org_id}, status: {response.status_code}")
+                return reference
+        logging.warning(f"Failed to fetch {resource_type} {resource_id}, status: {response.status_code}")
     except Exception as e:
-        logging.warning(f"Failed to fetch Organization {org_id}: {e}")
+        logging.warning(f"Failed to fetch {resource_type} {resource_id}: {e}")
 
     # Fetch failed — fall back to a bare GET so the transaction still resolves the reference
     transaction_bundle["entry"].append({
-        "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
+        "fullUrl": f"urn:uuid:{resource_id}",
         "request": {
             "method": "GET",
-            "url": f"Organization/{org_id}"
+            "url": f"{resource_type}/{resource_id}"
         }
     })
-    return organization_reference
+    return reference
 
 
 def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None):
@@ -483,116 +499,51 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
     # Get organization info
     organization_id = form_data.get('organisation', '')
     
-    # Create and add Patient reference (assumed to exist already)
-    patient_reference = {
-        "reference": f"Patient/{patient_id}"
-    }
-    
-    # Create and add reference to Practitioner (requester)
+    # Create and add Patient reference, and embed the actual Patient resource —
+    # the AU eRequesting bundle profiles require a matching 'patient' slice
+    # (an actual Patient instance in the bundle, not just a reference to one).
+    server_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
+    patient_reference = _fetch_and_embed_resource(
+        transaction_bundle, 'Patient', patient_id, None, server_url, auth_credentials)
+
+    # Create and add reference to Practitioner (requester), embedding both the
+    # PractitionerRole and the Practitioner it points to as full resources.
     practitioner_reference = None
     if requester_id:
-        practitioner_reference = {
-            "reference": f"PractitionerRole/{requester_id}"
-        }
-        
-        # Fetch and add PractitionerRole resource to the bundle.
-        # _include only works on a search interaction, not a direct by-id read
-        # (Smile CDR rejects the latter with a 400) — so search by _id instead.
-        try:
-            server_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
-            response = fhir_get(f"/PractitionerRole?_id={requester_id}&_include=PractitionerRole:practitioner",
-                              fhir_server_url=server_url, auth_credentials=auth_credentials, timeout=10)
-            if response.status_code == 200:
-                practitioner_role_data = response.json()
-                if practitioner_role_data.get('resourceType') == 'PractitionerRole':
-                    # Add PractitionerRole resource to bundle
-                    transaction_bundle["entry"].append({
-                        "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                        "resource": practitioner_role_data,
-                        "request": {
-                            "method": "PUT",
-                            "url": f"PractitionerRole/{requester_id}"
-                        }
-                    })
-                    
-                    # If the response includes a practitioner, add it too
-                    if practitioner_role_data.get('entry'):
-                        for entry in practitioner_role_data.get('entry', []):
-                            resource = entry.get('resource', {})
-                            if resource.get('resourceType') == 'Practitioner':
-                                practitioner_id = resource.get('id')
-                                transaction_bundle["entry"].append({
-                                    "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                                    "resource": resource,
-                                    "request": {
-                                        "method": "PUT",
-                                        "url": f"Practitioner/{practitioner_id}"
-                                    }
-                                })
-                elif practitioner_role_data.get('resourceType') == 'Bundle':
-                    # Handle bundle response with _include
-                    for entry in practitioner_role_data.get('entry', []):
-                        resource = entry.get('resource', {})
-                        if resource.get('resourceType') == 'PractitionerRole':
-                            transaction_bundle["entry"].append({
-                                "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                                "resource": resource,
-                                "request": {
-                                    "method": "PUT",
-                                    "url": f"PractitionerRole/{requester_id}"
-                                }
-                            })
-                        elif resource.get('resourceType') == 'Practitioner':
-                            practitioner_id = resource.get('id')
-                            transaction_bundle["entry"].append({
-                                "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                                "resource": resource,
-                                "request": {
-                                    "method": "PUT",
-                                    "url": f"Practitioner/{practitioner_id}"
-                                }
-                            })
-            else:
-                # If response status is not 200, fall back to GET request
-                print(f"Failed to fetch PractitionerRole {requester_id}, status: {response.status_code}")
-                transaction_bundle["entry"].append({
-                    "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                    "request": {
-                        "method": "GET",
-                        "url": f"PractitionerRole/{requester_id}"
-                    }
-                })
-        except Exception as e:
-            print(f"Failed to fetch PractitionerRole {requester_id}: {e}")
-            # Fall back to GET request if fetch fails
-            transaction_bundle["entry"].append({
-                "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-                "request": {
-                    "method": "GET",
-                    "url": f"PractitionerRole/{requester_id}"
-                }
-            })
+        practitioner_role_bundle_index = len(transaction_bundle["entry"])
+        practitioner_reference = _fetch_and_embed_resource(
+            transaction_bundle, 'PractitionerRole', requester_id, None, server_url, auth_credentials)
+
+        # If the PractitionerRole was embedded, follow its .practitioner reference
+        # and embed that Practitioner resource too.
+        added_role_entry = transaction_bundle["entry"][practitioner_role_bundle_index]
+        role_resource = added_role_entry.get('resource')
+        if role_resource:
+            practitioner_ref = role_resource.get('practitioner', {}).get('reference', '')
+            practitioner_id = practitioner_ref.split('/')[-1] if practitioner_ref else ''
+            if practitioner_id:
+                _fetch_and_embed_resource(
+                    transaction_bundle, 'Practitioner', practitioner_id, None, server_url, auth_credentials)
     
     # AU eRequesting bundle profiles require two Organization instances: the
     # fulfiller (the pathology/radiology provider performing the request) and
     # the placer (the requesting organisation the ordering practitioner works
     # for). Fetch and embed both as full resources.
-    server_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
 
     # Fulfiller organisation (selected via the Provider dropdown)
     organization_name = form_data.get('organisationName', '').strip()
     organization_reference = None
     if organization_id:
-        organization_reference = _fetch_and_embed_organization(
-            transaction_bundle, organization_id, organization_name, server_url, auth_credentials)
+        organization_reference = _fetch_and_embed_resource(
+            transaction_bundle, 'Organization', organization_id, organization_name, server_url, auth_credentials)
 
     # Placer organisation (the ordering practitioner's organisation)
     placer_organization_id = form_data.get('requester_org_id', '').strip()
     placer_organization_name = form_data.get('requester_org_name', '').strip()
     placer_organization_reference = None
     if placer_organization_id:
-        placer_organization_reference = _fetch_and_embed_organization(
-            transaction_bundle, placer_organization_id, placer_organization_name, server_url, auth_credentials)
+        placer_organization_reference = _fetch_and_embed_resource(
+            transaction_bundle, 'Organization', placer_organization_id, placer_organization_name, server_url, auth_credentials)
     placer_organization_reference = placer_organization_reference or {"display": "Requesting Organisation"}
     
     # Generate a unique requisition number for this order (8 digits starting with current year)
