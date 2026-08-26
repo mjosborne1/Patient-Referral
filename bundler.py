@@ -302,22 +302,28 @@ def generate_narrative_text(resource):
     }
 
 
-def _fetch_and_embed_resource(transaction_bundle, resource_type, resource_id, display_name, fhir_server_url, auth_credentials):
+def _fetch_and_embed_resource(transaction_bundle, resource_type, resource_id, display_name,
+                              fhir_server_url, auth_credentials, uuid_map=None):
     """
     Fetch an existing resource by type+id and embed it in the transaction bundle
     as a PUT entry, so the bundle contains an actual resource instance rather
     than just a bare reference. Falls back to a GET entry (and a
     reference-only result) if the fetch fails.
 
-    fullUrl is set to urn:uuid:{resource_id} — using the resource's own id
-    rather than a freshly-generated one — so that bundle-internal reference
-    resolution (e.g. PractitionerRole.organization -> this entry) is
-    unambiguous instead of pointing at an unrelated random UUID.
+    The AU eRequesting bundle profiles require (au-ereq-bundle-04) that every
+    entry.fullUrl is a "urn:uuid:" value with a lowercase UUID, and the core
+    spec requires fullUrl to be an absolute URL. Server-assigned ids are often
+    not UUIDs at all (e.g. "chen-emily", "50659"), so a fresh UUID is minted
+    for the entry and recorded in uuid_map; _rewrite_references_to_uuids()
+    then repoints every reference to this resource at that same urn:uuid, so
+    bundle-internal resolution matches the fullUrl exactly. The request still
+    PUTs to the resource's real server id, preserving its identity.
 
     Returns a reference dict suitable for use wherever this resource is
     referenced elsewhere in the bundle (e.g. performer, requisition.assigner).
     """
-    reference = {"reference": f"{resource_type}/{resource_id}"}
+    entry_full_url = f"urn:uuid:{uuid.uuid4()}"
+    reference = {"reference": entry_full_url}
     if display_name:
         reference["display"] = display_name
 
@@ -339,27 +345,51 @@ def _fetch_and_embed_resource(transaction_bundle, resource_type, resource_id, di
                     else:
                         del resource['meta']
                 transaction_bundle["entry"].append({
-                    "fullUrl": f"urn:uuid:{resource_id}",
+                    "fullUrl": entry_full_url,
                     "resource": resource,
                     "request": {
                         "method": "PUT",
                         "url": f"{resource_type}/{resource_id}"
                     }
                 })
+                if uuid_map is not None:
+                    uuid_map[f"{resource_type}/{resource_id}"] = entry_full_url
                 return reference
         logging.warning(f"Failed to fetch {resource_type} {resource_id}, status: {response.status_code}")
     except Exception as e:
         logging.warning(f"Failed to fetch {resource_type} {resource_id}: {e}")
 
-    # Fetch failed — fall back to a bare GET so the transaction still resolves the reference
+    # Fetch failed — the resource isn't in the bundle, so reference it by its
+    # server id instead of a urn:uuid that resolves to nothing. A GET entry
+    # keeps it addressable; GET entries carry no fullUrl.
     transaction_bundle["entry"].append({
-        "fullUrl": f"urn:uuid:{resource_id}",
         "request": {
             "method": "GET",
             "url": f"{resource_type}/{resource_id}"
         }
     })
-    return reference
+    fallback_reference = {"reference": f"{resource_type}/{resource_id}"}
+    if display_name:
+        fallback_reference["display"] = display_name
+    return fallback_reference
+
+
+def _rewrite_references_to_uuids(node, uuid_map):
+    """
+    Recursively repoint every "reference" of the form "ResourceType/id" at the
+    urn:uuid fullUrl of the matching bundle entry, so in-bundle references
+    resolve to the entry that carries the resource rather than looking like
+    external references that happen to share a type and id.
+    """
+    if isinstance(node, dict):
+        target = node.get('reference')
+        if isinstance(target, str) and target in uuid_map:
+            node['reference'] = uuid_map[target]
+        for value in node.values():
+            _rewrite_references_to_uuids(value, uuid_map)
+    elif isinstance(node, list):
+        for item in node:
+            _rewrite_references_to_uuids(item, uuid_map)
 
 
 def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None):
@@ -499,12 +529,18 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
     # Get organization info
     organization_id = form_data.get('organisation', '')
     
+    # Maps "ResourceType/id" of each embedded pre-existing resource to the
+    # urn:uuid fullUrl of its bundle entry, so references can be repointed at
+    # the entry once the whole bundle is assembled.
+    embedded_resource_uuids = {}
+
     # Create and add Patient reference, and embed the actual Patient resource —
     # the AU eRequesting bundle profiles require a matching 'patient' slice
     # (an actual Patient instance in the bundle, not just a reference to one).
     server_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
     patient_reference = _fetch_and_embed_resource(
-        transaction_bundle, 'Patient', patient_id, None, server_url, auth_credentials)
+        transaction_bundle, 'Patient', patient_id, None, server_url, auth_credentials,
+        uuid_map=embedded_resource_uuids)
 
     # Create and add reference to Practitioner (requester), embedding both the
     # PractitionerRole and the Practitioner it points to as full resources.
@@ -512,7 +548,8 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
     if requester_id:
         practitioner_role_bundle_index = len(transaction_bundle["entry"])
         practitioner_reference = _fetch_and_embed_resource(
-            transaction_bundle, 'PractitionerRole', requester_id, None, server_url, auth_credentials)
+            transaction_bundle, 'PractitionerRole', requester_id, None, server_url, auth_credentials,
+            uuid_map=embedded_resource_uuids)
 
         # If the PractitionerRole was embedded, follow its .practitioner reference
         # and embed that Practitioner resource too.
@@ -523,7 +560,8 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
             practitioner_id = practitioner_ref.split('/')[-1] if practitioner_ref else ''
             if practitioner_id:
                 _fetch_and_embed_resource(
-                    transaction_bundle, 'Practitioner', practitioner_id, None, server_url, auth_credentials)
+                    transaction_bundle, 'Practitioner', practitioner_id, None, server_url, auth_credentials,
+                    uuid_map=embedded_resource_uuids)
     
     # AU eRequesting bundle profiles require two Organization instances: the
     # fulfiller (the pathology/radiology provider performing the request) and
@@ -535,7 +573,8 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
     organization_reference = None
     if organization_id:
         organization_reference = _fetch_and_embed_resource(
-            transaction_bundle, 'Organization', organization_id, organization_name, server_url, auth_credentials)
+            transaction_bundle, 'Organization', organization_id, organization_name, server_url, auth_credentials,
+            uuid_map=embedded_resource_uuids)
 
     # Placer organisation (the ordering practitioner's organisation)
     placer_organization_id = form_data.get('requester_org_id', '').strip()
@@ -543,7 +582,8 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
     placer_organization_reference = None
     if placer_organization_id:
         placer_organization_reference = _fetch_and_embed_resource(
-            transaction_bundle, 'Organization', placer_organization_id, placer_organization_name, server_url, auth_credentials)
+            transaction_bundle, 'Organization', placer_organization_id, placer_organization_name, server_url, auth_credentials,
+            uuid_map=embedded_resource_uuids)
     placer_organization_reference = placer_organization_reference or {"display": "Requesting Organisation"}
     
     # Generate a unique requisition number for this order (8 digits starting with current year)
@@ -1194,9 +1234,10 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                     }
                 })
                 
-                # Add PractitionerRole as a GET request in the bundle for each recipient
+                # Add PractitionerRole as a GET request in the bundle for each
+                # recipient. GET entries carry no fullUrl — a non-urn:uuid one
+                # would breach au-ereq-bundle-04.
                 transaction_bundle["entry"].append({
-                    "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
                     "request": {
                         "method": "GET",
                         "url": f"PractitionerRole/{recipient_id}"
@@ -1408,6 +1449,16 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
             }
         })
         
+    # Repoint references to embedded pre-existing resources ("Patient/xyz") at
+    # the urn:uuid fullUrl of the entry carrying them, so in-bundle resolution
+    # matches the fullUrl exactly. Covers references inside the fetched
+    # resources themselves (e.g. PractitionerRole.practitioner) as well as
+    # those the bundler generated.
+    if embedded_resource_uuids:
+        for entry in transaction_bundle["entry"]:
+            if "resource" in entry:
+                _rewrite_references_to_uuids(entry["resource"], embedded_resource_uuids)
+
     # Add narratives to all resources if requested
     add_narrative = form_data.get('addNarrative', False)
     if add_narrative:
@@ -1417,5 +1468,5 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 resource = entry["resource"]
                 narrative = generate_narrative_text(resource)
                 resource["text"] = narrative
-    
+
     return transaction_bundle
