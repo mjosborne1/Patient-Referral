@@ -1755,15 +1755,17 @@ def requesting_practitioner_widget():
 @app.route('/session/requesting-practitioner', methods=['POST'])
 def set_requesting_practitioner():
     """Save the ordering practitioner to the session."""
-    role_id   = request.form.get('role_id',   '').strip()
-    role_name = request.form.get('role_name', '').strip()
-    role_org  = request.form.get('role_org',  '').strip()
+    role_id     = request.form.get('role_id',     '').strip()
+    role_name   = request.form.get('role_name',   '').strip()
+    role_org    = request.form.get('role_org',    '').strip()
+    role_org_id = request.form.get('role_org_id', '').strip()
     if role_id and role_name:
         session['requesting_practitioner'] = {
-            'id':   role_id,
-            'name': role_name,
-            'org':  role_org,
-            'ref':  f'PractitionerRole/{role_id}',
+            'id':      role_id,
+            'name':    role_name,
+            'org':     role_org,
+            'org_id':  role_org_id,
+            'ref':     f'PractitionerRole/{role_id}',
         }
     return '', 204
 
@@ -1776,6 +1778,10 @@ def create_diagnostic_request_bundle(patient_id):
     _sp = session.get('requesting_practitioner', {})
     if _sp.get('id'):
         form_data['requester'] = _sp['id']
+    if _sp.get('org_id'):
+        form_data['requester_org_id'] = _sp['org_id']
+    if _sp.get('org'):
+        form_data['requester_org_name'] = _sp['org']
     # Log the processed form data in a readable format
     logging.info(f"Form data: {json.dumps(form_data, indent=2)}")
 

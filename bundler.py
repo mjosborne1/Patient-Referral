@@ -301,6 +301,51 @@ def generate_narrative_text(resource):
         "div": narrative_text
     }
 
+
+def _fetch_and_embed_organization(transaction_bundle, org_id, org_name, fhir_server_url, auth_credentials):
+    """
+    Fetch an existing Organization by id and embed it in the transaction bundle
+    as a PUT entry, so the bundle contains an actual Organization instance
+    rather than just a bare reference. Falls back to a GET entry (and a
+    reference-only result) if the fetch fails.
+
+    Returns a reference dict suitable for use wherever this organisation is
+    referenced elsewhere in the bundle (e.g. performer, requisition.assigner).
+    """
+    organization_reference = {"reference": f"Organization/{org_id}"}
+    if org_name:
+        organization_reference["display"] = org_name
+
+    try:
+        response = fhir_get(f"/Organization/{org_id}", fhir_server_url=fhir_server_url,
+                             auth_credentials=auth_credentials, timeout=10)
+        if response.status_code == 200:
+            org_resource = response.json()
+            if org_resource.get('resourceType') == 'Organization':
+                transaction_bundle["entry"].append({
+                    "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
+                    "resource": org_resource,
+                    "request": {
+                        "method": "PUT",
+                        "url": f"Organization/{org_id}"
+                    }
+                })
+                return organization_reference
+        logging.warning(f"Failed to fetch Organization {org_id}, status: {response.status_code}")
+    except Exception as e:
+        logging.warning(f"Failed to fetch Organization {org_id}: {e}")
+
+    # Fetch failed — fall back to a bare GET so the transaction still resolves the reference
+    transaction_bundle["entry"].append({
+        "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
+        "request": {
+            "method": "GET",
+            "url": f"Organization/{org_id}"
+        }
+    })
+    return organization_reference
+
+
 def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None):
     """
     Creates a FHIR Transaction Bundle for diagnostic requests based on form data.
@@ -528,24 +573,27 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 }
             })
     
-    # Create and add reference to Organization (if provided)
+    # AU eRequesting bundle profiles require two Organization instances: the
+    # fulfiller (the pathology/radiology provider performing the request) and
+    # the placer (the requesting organisation the ordering practitioner works
+    # for). Fetch and embed both as full resources.
+    server_url = fhir_server_url or os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
+
+    # Fulfiller organisation (selected via the Provider dropdown)
     organization_name = form_data.get('organisationName', '').strip()
     organization_reference = None
     if organization_id:
-        organization_reference = {
-            "reference": f"Organization/{organization_id}"
-        }
-        if organization_name:
-            organization_reference["display"] = organization_name
-        
-        # Add Organization as a GET request in the bundle
-        transaction_bundle["entry"].append({
-            "fullUrl": f"urn:uuid:{str(uuid.uuid4())}",
-            "request": {
-                "method": "GET",
-                "url": f"Organization/{organization_id}"
-            }
-        })
+        organization_reference = _fetch_and_embed_organization(
+            transaction_bundle, organization_id, organization_name, server_url, auth_credentials)
+
+    # Placer organisation (the ordering practitioner's organisation)
+    placer_organization_id = form_data.get('requester_org_id', '').strip()
+    placer_organization_name = form_data.get('requester_org_name', '').strip()
+    placer_organization_reference = None
+    if placer_organization_id:
+        placer_organization_reference = _fetch_and_embed_organization(
+            transaction_bundle, placer_organization_id, placer_organization_name, server_url, auth_credentials)
+    placer_organization_reference = placer_organization_reference or {"display": "Requesting Organisation"}
     
     # Generate a unique requisition number for this order (8 digits starting with current year)
     current_year = datetime.datetime.now().year % 100  # Get last 2 digits of year (e.g., 25 for 2025)
@@ -961,7 +1009,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 },
                 "system": "http://myclinic.example.org.au/identifier",
                 "value": requisition_number,
-                "assigner": organization_reference if organization_reference else {"display": "Requesting Organisation"}
+                "assigner": placer_organization_reference
             },
             "category": [{
                 "coding": [{
@@ -1096,7 +1144,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 },
                 "system": "http://myclinic.example.org.au/identifier",
                 "value": requisition_number,
-                "assigner": organization_reference if organization_reference else {"display": "Requesting Organisation"}
+                "assigner": placer_organization_reference
             },
             "status": "requested",
             "intent": "order",
@@ -1166,7 +1214,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                         },
                         "system": "http://myclinic.example.org.au/identifier",
                         "value": requisition_number,
-                        "assigner": organization_reference if organization_reference else {"display": "Requesting Organisation"}
+                        "assigner": placer_organization_reference
                     },
                     "status": "active",
                     "category": [{
@@ -1248,7 +1296,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
             "patient": patient_reference,
             "dateTime": get_localtime_bne(),
             "performer": [patient_reference],  # Patient is agreeing to the consent
-            "organization": [organization_reference] if organization_reference else [{"display": "Requesting Organisation"}],
+            "organization": [placer_organization_reference],
             "policy": [{
                 "authority": "https://www.health.gov.au",
                 "uri": "https://www.legislation.gov.au/C2012A00063"
@@ -1319,7 +1367,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 },
                 "system": "http://myclinic.example.org.au/identifier",
                 "value": requisition_number,
-                "assigner": organization_reference if organization_reference else {"display": "Requesting Organisation"}
+                "assigner": placer_organization_reference
             },
             "status": "active",
             "category": [{
@@ -1342,7 +1390,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
             "authoredOn": get_localtime_bne(),
             "requester": patient_reference,
             "recipient": [patient_reference],
-            "sender": organization_reference if organization_reference else {"display": "Requesting Organisation"}
+            "sender": placer_organization_reference
         }
         
         # Add CommunicationRequest to bundle
@@ -1382,7 +1430,7 @@ def create_request_bundle(form_data, fhir_server_url=None, auth_credentials=None
                 },
                 "system": "http://myclinic.example.org.au/identifier",
                 "value": requisition_number,
-                "assigner": organization_reference if organization_reference else {"display": "Requesting Organisation"}
+                "assigner": placer_organization_reference
             },
             "status": "requested",
             "intent": "order",

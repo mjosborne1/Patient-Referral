@@ -108,6 +108,7 @@ function spConfirm() {
     if (!window._spRoleId || !window._spRoleName) return;
     var orgEl = document.getElementById('spOrgList');
     var orgName = orgEl ? orgEl.options[orgEl.selectedIndex].text.trim() : window._spOrgName || '';
+    var orgId = orgEl ? orgEl.value : '';
 
     fetch('/session/requesting-practitioner', {
         method: 'POST',
@@ -115,7 +116,8 @@ function spConfirm() {
         body: new URLSearchParams({
             role_id:   window._spRoleId,
             role_name: window._spRoleName,
-            role_org:  orgName
+            role_org:  orgName,
+            role_org_id: orgId
         })
     }).then(function () {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('setPractitionerModal')).hide();
