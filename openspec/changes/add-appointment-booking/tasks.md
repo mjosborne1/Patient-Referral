@@ -69,12 +69,12 @@ Frontend
 
 ## 6. Business-status fix and IG feedback — ④
 
-- [ ] 6.1 `app.py` `BUSINESS_STATUS_BY_TASK_STATUS['accepted']`: `booked` → `service-booked` ("Service booked"); test in `tests/booking/`
+- [x] 6.1 `app.py` `BUSINESS_STATUS_BY_TASK_STATUS['accepted']`: `booked` → `service-booked` ("Service booked"); test in `tests/booking/`
 - [ ] 6.2 Add an open issue to `radiology-referral/input/pagecontent/open-issues.md`: Task stays `accepted` on booking (no path from `in-progress` back to `accepted` on cancel)
 
 ## 7. Validation and e2e
 
 - [ ] 7.1 `tests/booking/validate_booking.py`: run generated Schedule, Slot and Appointment through the HL7 validator jar with `-ig <rebuilt package>`; skipped if the jar or package is missing
-- [ ] 7.2 `tests/e2e_booking.py` (skipped unless `FHIR_E2E_URL`): publish → search → propose → second propose expects 412 → confirm → cancel → reschedule
+- [x] 7.2 `tests/booking/test_e2e_booking.py` (skipped unless `FHIR_E2E_URL`): publish → search → propose → second propose expects 412 → confirm → cancel → reschedule
 - [ ] 7.3 Run the e2e against the default Aidbox; record any `ifMatch` or search-parameter gaps in the design's "Server assumptions"
-- [ ] 7.4 Update `.env.example` with `CLAIM_BOOKING_PROFILES`, `BOOKING_TIMEZONE` and `FHIR_E2E_URL`
+- [x] 7.4 Update `.env.example` with `CLAIM_BOOKING_PROFILES`, `BOOKING_TIMEZONE` and `FHIR_E2E_URL`

@@ -11,7 +11,7 @@ from datetime import date, time, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from booking import IMAGING_SERVICE_TYPES, BookingClient  # noqa: E402
+from booking import DEFAULT_TIMEZONE, IMAGING_SERVICE_TYPES, BookingClient  # noqa: E402
 
 
 def main(argv=None):
@@ -27,6 +27,7 @@ def main(argv=None):
     parser.add_argument("--day-start", type=time.fromisoformat, default=time(9, 0))
     parser.add_argument("--day-end", type=time.fromisoformat, default=time(17, 0))
     parser.add_argument("--slot-minutes", type=int, default=30)
+    parser.add_argument("--tz", default=os.environ.get("BOOKING_TIMEZONE", DEFAULT_TIMEZONE))
     parser.add_argument("--no-profiles", action="store_true", help="Do not claim IG profiles")
     args = parser.parse_args(argv)
 
@@ -37,7 +38,7 @@ def main(argv=None):
         service_type=IMAGING_SERVICE_TYPES[args.service],
         start_date=args.start, end_date=args.start + timedelta(days=args.days - 1),
         day_start=args.day_start, day_end=args.day_end, slot_minutes=args.slot_minutes,
-        claim_profiles=not args.no_profiles)
+        claim_profiles=not args.no_profiles, tz=args.tz)
     if not result.ok:
         for issue in result.operation_outcome.get("issue", []):
             print(f"{issue.get('severity')}: {issue.get('diagnostics')}", file=sys.stderr)

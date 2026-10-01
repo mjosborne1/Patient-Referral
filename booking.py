@@ -721,12 +721,13 @@ class BookingClient:
             return PublishResult(ok=False, operation_outcome=error.operation_outcome)
 
     def _publish_availability(self, *, organization_id, location_id, service_type, start_date,
-                              end_date, day_start, day_end, slot_minutes, claim_profiles=True):
+                              end_date, day_start, day_end, slot_minutes, claim_profiles=True,
+                              tz=DEFAULT_TIMEZONE):
         service, service_is_new = self._find_or_create_healthcare_service(
             organization_id, location_id, service_type)
         service_ref = f"HealthcareService/{service['id']}"
         slot_times = generate_slot_times(start_date, end_date, day_start=day_start,
-                                         day_end=day_end, slot_minutes=slot_minutes)
+                                         day_end=day_end, slot_minutes=slot_minutes, tz=tz)
         if not slot_times:
             return PublishResult(ok=True)
 

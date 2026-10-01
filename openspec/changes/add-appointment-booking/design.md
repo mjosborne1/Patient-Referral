@@ -166,7 +166,7 @@ published Slot → an Appointment and Slot exist on the server, and both Tasks c
 |---|---|---|
 | `CLAIM_BOOKING_PROFILES` | `true` | Add IG `meta.profile` to Schedule, Slot and Appointment |
 | `BOOKING_TIMEZONE` | `Australia/Brisbane` | Slot generation and display |
-| `FHIR_E2E_URL` | unset | Enables `tests/e2e_booking.py` against a live server |
+| `FHIR_E2E_URL` | unset | Enables `tests/booking/test_e2e_booking.py` against a live server |
 
 ## Server assumptions to verify
 

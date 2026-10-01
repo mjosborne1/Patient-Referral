@@ -16,6 +16,10 @@ def _env_flag(name, default=True):
     return os.environ.get(name, str(default)).lower() not in ("false", "0", "no")
 
 
+def _timezone():
+    return os.environ.get("BOOKING_TIMEZONE", DEFAULT_TIMEZONE)
+
+
 def _client():
     return BookingClient(get_fhir_server_url(), auth=get_fhir_auth_credentials(),
                          bearer=get_fhir_bearer_token(),
@@ -43,6 +47,7 @@ def publish_availability():
         day_end=time.fromisoformat(form["day_end"]),
         slot_minutes=int(form["slot_minutes"]),
         claim_profiles=_env_flag("CLAIM_BOOKING_PROFILES"),
+        tz=_timezone(),
     )
     return render_template("partials/booking_publish_result.html", result=result)
 
@@ -69,8 +74,7 @@ def booking_time(value):
 
 
 def _local(value):
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
-        ZoneInfo(os.environ.get("BOOKING_TIMEZONE", DEFAULT_TIMEZONE)))
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(ZoneInfo(_timezone()))
 
 
 @booking_bp.route("/booking/patient/<patient_id>/panel")

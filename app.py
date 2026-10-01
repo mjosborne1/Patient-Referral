@@ -2745,7 +2745,7 @@ TASK_STATUS_TRANSITIONS = {
 # Context-specific codes are marked with their context
 BUSINESS_STATUS_BY_TASK_STATUS = {
     'accepted': [
-        {'code': 'booked', 'display': 'Booked', 'context': 'shared'}
+        {'code': 'service-booked', 'display': 'Service booked', 'context': 'shared'}
     ],
     'in-progress': [
         {'code': 'preliminary', 'display': 'Preliminary Result', 'context': 'shared'},
@@ -2767,7 +2767,8 @@ BUSINESS_STATUS_BY_TASK_STATUS = {
 }
 
 # CodeSystem for business status
-BUSINESS_STATUS_CODESYSTEM = "http://hl7.org.au/fhir/ereq/CodeSystem/au-erequesting-task-businessstatus"
+# Bound (via the au-erequesting-task-businessstatus ValueSet) in AU eRequesting 1.0.1
+BUSINESS_STATUS_CODESYSTEM = "http://terminology.hl7.org.au/CodeSystem/task-business-status"
 
 def get_valid_business_statuses(task_status, context='shared'):
     """Get valid business status codes for a given task status and context."""

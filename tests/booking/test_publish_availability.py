@@ -100,3 +100,18 @@ def test_nothing_is_posted_when_every_slot_is_already_published(fhir):
 
     assert result.ok and result.created_slots == 0 and result.skipped_slots == 2
     assert all(r.method == "GET" for r in fhir.request_history)
+
+
+def test_slots_are_generated_in_the_configured_timezone(fhir):
+    fhir.get(f"{BASE}/HealthcareService", json=searchset(
+        {"resourceType": "HealthcareService", "id": "hcs-1"}))
+    fhir.get(f"{BASE}/Schedule", json=searchset())
+    fhir.post(BASE, json=transaction_response(3))
+
+    BookingClient(BASE).publish_availability(
+        organization_id="org", location_id="loc", service_type=CT_SERVICE,
+        start_date=date(2026, 10, 6), end_date=date(2026, 10, 6),
+        day_start=time(9, 0), day_end=time(9, 30), slot_minutes=30, tz="Australia/Sydney")
+
+    slot = fhir.last_request.json()["entry"][1]["resource"]
+    assert slot["start"] == "2026-10-06T09:00:00+11:00"  # NSW daylight saving
