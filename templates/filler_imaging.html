@@ -110,6 +110,33 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="card mt-3">
+                    <div class="card-header fw-semibold">
+                        <i class="fas fa-clipboard-check me-1"></i>Accepted requests to book
+                    </div>
+                    <div class="card-body">
+                        <div id="unbookedRequests" hx-get="/filler/imaging/unbooked"
+                             hx-include="#organisationSelect"
+                             hx-trigger="change from:#organisationSelect, booking-changed from:body delay:1500ms">
+                            <p class="text-muted mb-0">Select a filler organisation to see accepted requests.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="fillerBookingModal" tabindex="-1" aria-labelledby="fillerBookingModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="fillerBookingModalLabel"><i class="fas fa-calendar-plus me-2"></i>Book appointment</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="fillerBookingModalBody">
+                        <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Finding free slots…</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

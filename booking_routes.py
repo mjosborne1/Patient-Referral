@@ -83,7 +83,8 @@ def placer_panel(patient_id):
     return render_template("partials/booking_panel.html", rows=rows, patient_id=patient_id)
 
 
-def _render_slot_picker(service_request_id, notice=None):
+def _render_slot_picker(service_request_id, notice=None, *, action_url=None,
+                        ask_instruction=False):
     result = _client().free_slots(service_request_id)
     if not result.ok:
         return render_template("partials/operation_outcome.html", outcome=result.operation_outcome)
@@ -91,7 +92,9 @@ def _render_slot_picker(service_request_id, notice=None):
     for slot, schedule in result.slots:
         days.setdefault(booking_day(slot["start"]), []).append((slot, schedule))
     return render_template("partials/booking_slot_picker.html", days=days, notice=notice,
-                           service_request=result.service_request)
+                           service_request=result.service_request,
+                           action_url=action_url or f"/booking/sr/{service_request_id}/propose",
+                           ask_instruction=ask_instruction)
 
 
 @booking_bp.route("/booking/sr/<service_request_id>/slots")
@@ -159,3 +162,40 @@ def filler_decline(appointment_id):
         return render_template("partials/booking_action_result.html", ok=False,
                                message="A reason is required to decline a booking.")
     return _booking_outcome(_client().decline(appointment_id, reason=reason), "Declined")
+
+
+# ── Filler: direct booking (IG variant) ─────────────────────────────────────
+
+@booking_bp.route("/filler/imaging/unbooked")
+@login_required
+def filler_unbooked():
+    try:
+        rows = _client().unbooked_requests(request.args["organization_id"])
+    except FhirError as error:
+        return render_template("partials/operation_outcome.html", outcome=error.operation_outcome)
+    return render_template("partials/booking_unbooked_list.html", rows=rows)
+
+
+def _filler_slot_picker(service_request_id, notice=None):
+    return _render_slot_picker(service_request_id, notice,
+                               action_url=f"/filler/imaging/sr/{service_request_id}/book",
+                               ask_instruction=True)
+
+
+@booking_bp.route("/filler/imaging/sr/<service_request_id>/slots")
+@login_required
+def filler_slot_picker(service_request_id):
+    return _filler_slot_picker(service_request_id)
+
+
+@booking_bp.route("/filler/imaging/sr/<service_request_id>/book", methods=["POST"])
+@login_required
+def filler_book(service_request_id):
+    result = _client().book_directly(
+        service_request_id, request.form["slot_id"],
+        patient_instruction=request.form.get("patient_instruction", "").strip() or None,
+        claim_profiles=_env_flag("CLAIM_BOOKING_PROFILES"))
+    if result.conflict:
+        return _filler_slot_picker(service_request_id,
+                                   notice="This slot was just taken — please choose another.")
+    return _booking_outcome(result, "Booked")

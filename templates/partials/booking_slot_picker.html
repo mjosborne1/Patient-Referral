@@ -6,8 +6,11 @@
 {% if not days %}
 <p class="text-muted mb-0">No free slots are published by this provider in the requested period.</p>
 {% else %}
-<form hx-post="/booking/sr/{{ service_request.id }}/propose" hx-target="#bookingModalBody"
-      hx-disabled-elt="find button">
+<form hx-post="{{ action_url }}" hx-target="closest .modal-body" hx-disabled-elt="find button">
+  {% if ask_instruction %}
+  <input type="text" name="patient_instruction" class="form-control form-control-sm mb-2"
+         placeholder="Patient instructions (optional), e.g. Fast for 4 hours before your scan">
+  {% endif %}
   {% for day, slots in days.items() %}
   <div class="mb-2">
     <div class="fw-semibold small text-muted mb-1">{{ day }}</div>

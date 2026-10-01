@@ -266,6 +266,7 @@ class RequestRow:
     appointment: dict | None  # the active Appointment, else the most recent one
     state: str  # awaiting-triage | rejected | bookable | proposed | booked | declined | cancelled | closed
     bookable: bool
+    patient: dict | None = None
 
 
 def _declined(appointment):
@@ -301,9 +302,11 @@ def imaging_request_rows(searchset):
              and any(b.get("reference") == ref for b in r.get("basedOn", []))),
             key=lambda a: a.get("created", ""), reverse=True)
         appointment = active_appointment(appointments) or next(iter(appointments), None)
+        patient = next((r for r in resources if r.get("resourceType") == "Patient"
+                        and _ref(r) == service_request.get("subject", {}).get("reference")), None)
         rows.append(RequestRow(service_request, task, appointment,
                                _booking_state(task, appointment),
-                               is_bookable(task, appointments)))
+                               is_bookable(task, appointments), patient))
     return rows
 
 
@@ -312,6 +315,10 @@ def _participants_with(appointment, status_for):
     """Copy of the Appointment's participants with status replaced where status_for returns one."""
     return [{**p, "status": status_for(p) or p.get("status")}
             for p in appointment.get("participant", [])]
+
+
+def _service_booked_entries(task, group_task):
+    return [_update_entry(t, businessStatus=SERVICE_BOOKED) for t in (task, group_task) if t]
 
 
 def build_confirm_transaction(appointment, slot, task, group_task, *, patient_instruction=None):
@@ -324,7 +331,7 @@ def build_confirm_transaction(appointment, slot, task, group_task, *, patient_in
         appointment_changes["patientInstruction"] = patient_instruction
     entries = [_update_entry(appointment, **appointment_changes),
                _update_entry(slot, status="busy")]
-    entries += [_update_entry(t, businessStatus=SERVICE_BOOKED) for t in (task, group_task) if t]
+    entries += _service_booked_entries(task, group_task)
     return {"resourceType": "Bundle", "type": "transaction", "entry": entries}
 
 
@@ -338,6 +345,19 @@ def build_decline_transaction(appointment, slot, *, reason):
                               "HealthcareService/") else None)),
         _update_entry(slot, status="free"),
     ]}
+
+
+
+def build_direct_book_transaction(service_request, slot, schedule, task, group_task, *,
+                                  patient_instruction=None, claim_profiles=True):
+    """Filler books a free Slot outright: booked Appointment, Slot busy, Tasks service-booked."""
+    appointment = build_appointment(service_request, slot, schedule, status="booked",
+                                    claim_profiles=claim_profiles)
+    if patient_instruction:
+        appointment["patientInstruction"] = patient_instruction
+    entries = [_entry(appointment, "POST", "Appointment"), _update_entry(slot, status="busy")]
+    entries += _service_booked_entries(task, group_task)
+    return {"resourceType": "Bundle", "type": "transaction", "entry": entries}
 
 
 # ── FHIR server I/O ─────────────────────────────────────────────────────────
@@ -541,9 +561,9 @@ class BookingClient:
             return None
         return appointment, slot
 
-    def _tasks_for(self, appointment):
-        """The fulfilment Task for the Appointment's ServiceRequest and its group Task."""
-        tasks = self._search("Task", {"focus": appointment["basedOn"][0]["reference"]})
+    def _tasks_for(self, service_request_ref):
+        """The fulfilment Task for the ServiceRequest and its group Task."""
+        tasks = self._search("Task", {"focus": service_request_ref})
         task = next((t for t in tasks if t.get("partOf")), next(iter(tasks), None))
         group_task = None
         if task and task.get("partOf"):
@@ -557,7 +577,7 @@ class BookingClient:
             if booking is None:
                 return BookingResult(ok=False, conflict=True)
             appointment, slot = booking
-            task, group_task = self._tasks_for(appointment)
+            task, group_task = self._tasks_for(appointment["basedOn"][0]["reference"])
             self._transact(build_confirm_transaction(appointment, slot, task, group_task,
                                                      patient_instruction=patient_instruction))
             return BookingResult(ok=True, appointment_id=appointment_id)
@@ -572,6 +592,37 @@ class BookingClient:
             appointment, slot = booking
             self._transact(build_decline_transaction(appointment, slot, reason=reason))
             return BookingResult(ok=True, appointment_id=appointment_id)
+        return self._booking(action)
+
+    def unbooked_requests(self, organization_id):
+        """The organisation's accepted imaging requests that have no active Appointment."""
+        response = self._request("GET", "ServiceRequest", params=[
+            ("performer", f"Organization/{organization_id}"),
+            ("category", IMAGING_CATEGORY),
+            ("_include", "ServiceRequest:patient"),
+            ("_revinclude", "Task:focus"),
+            ("_revinclude", "Appointment:based-on"),
+            ("_sort", "authored"),
+            ("_count", "100"),
+        ])
+        if not response.ok:
+            raise FhirError(response)
+        return [row for row in imaging_request_rows(response.json()) if row.bookable]
+
+    def book_directly(self, service_request_id, slot_id, *, patient_instruction=None,
+                      claim_profiles=True):
+        """Filler books a free Slot for an accepted request without a proposal step."""
+        def action():
+            service_request = self._read("ServiceRequest", service_request_id)
+            slot = self._read("Slot", slot_id)
+            if slot.get("status") != "free":
+                return BookingResult(ok=False, conflict=True)
+            schedule = self._read("Schedule", slot["schedule"]["reference"].split("/", 1)[1])
+            task, group_task = self._tasks_for(_ref(service_request))
+            response = self._transact(build_direct_book_transaction(
+                service_request, slot, schedule, task, group_task,
+                patient_instruction=patient_instruction, claim_profiles=claim_profiles))
+            return BookingResult(ok=True, appointment_id=_created_id(response, "Appointment"))
         return self._booking(action)
 
     def locations_for_organization(self, organization_id):

@@ -56,9 +56,9 @@ Frontend
 
 ## 4. Filler direct-book — Ⓑ③④
 
-- [ ] 4.1 `build_direct_book_transaction()` (POST Appointment `booked` + Slot `busy` + Tasks)
-- [ ] 4.2 "Accepted, unbooked" list plus **Book directly** using the shared slot picker partial
-- [ ] 4.3 Route `POST /filler/imaging/sr/<id>/book` (route test)
+- [x] 4.1 `build_direct_book_transaction()` (POST Appointment `booked` + Slot `busy` + Tasks)
+- [x] 4.2 "Accepted, unbooked" list plus **Book directly** using the shared slot picker partial
+- [x] 4.3 Route `POST /filler/imaging/sr/<id>/book` (route test)
 
 ## 5. Cancel and atomic reschedule — Ⓑ⑤④
 

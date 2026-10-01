@@ -58,6 +58,8 @@ def test_filler_imaging_page_renders_the_availability_form(client):
     assert 'hx-post="/filler/imaging/availability"' in body
     assert "Computed tomography service" in body
     assert 'id="pendingBookings" hx-get="/filler/imaging/pending"' in body
+    assert 'id="unbookedRequests" hx-get="/filler/imaging/unbooked"' in body
+    assert 'id="fillerBookingModalBody"' in body
 
 
 from tests.booking.conftest import (FULFILMENT_TASK, GROUP_TASK, HELD_SLOT,  # noqa: E402
@@ -126,4 +128,46 @@ def test_acting_on_a_booking_changed_elsewhere_asks_to_refresh(client, fhir):
     response = client.post("/filler/imaging/appointment/appt-9/confirm", headers=FHIR_HEADERS)
 
     assert "changed since it was listed" in response.get_data(as_text=True)
+    assert response.headers["HX-Trigger"] == "booking-changed"
+
+
+from tests.booking.conftest import SCHEDULE, SLOT  # noqa: E402
+
+
+def test_unbooked_list_offers_direct_booking_for_accepted_requests(client, fhir):
+    fhir.get(f"{BASE}/ServiceRequest", json=searchset(SERVICE_REQUEST, FULFILMENT_TASK, PATIENT))
+
+    response = client.get("/filler/imaging/unbooked?organization_id=org-1", headers=FHIR_HEADERS)
+
+    body = response.get_data(as_text=True)
+    assert "Ada Lee" in body and "CT Abdo/Pelvis" in body
+    assert 'hx-get="/filler/imaging/sr/sr-ct-1/slots"' in body
+
+
+def test_filler_slot_picker_books_directly_and_asks_for_instructions(client, fhir):
+    fhir.get(f"{BASE}/ServiceRequest/sr-ct-1", json=SERVICE_REQUEST)
+    fhir.get(f"{BASE}/HealthcareService", json=searchset(
+        {"resourceType": "HealthcareService", "id": "healthcareservice-northside-ct"}))
+    fhir.get(f"{BASE}/Slot", json=searchset(SLOT, SCHEDULE))
+
+    response = client.get("/filler/imaging/sr/sr-ct-1/slots", headers=FHIR_HEADERS)
+
+    body = response.get_data(as_text=True)
+    assert 'hx-post="/filler/imaging/sr/sr-ct-1/book"' in body
+    assert 'name="patient_instruction"' in body
+
+
+def test_booking_directly_reports_booked(client, fhir):
+    fhir.get(f"{BASE}/ServiceRequest/sr-ct-1", json=SERVICE_REQUEST)
+    fhir.get(f"{BASE}/Slot/slot-0930", json=SLOT)
+    fhir.get(f"{BASE}/Schedule/schedule-northside-ct", json=SCHEDULE)
+    fhir.get(f"{BASE}/Task", json=searchset(FULFILMENT_TASK))
+    fhir.get(f"{BASE}/Task/task-group-1", json=GROUP_TASK)
+    fhir.post(BASE, json=transaction_response(0))
+
+    response = client.post("/filler/imaging/sr/sr-ct-1/book",
+                           data={"slot_id": "slot-0930", "patient_instruction": "Fast"},
+                           headers=FHIR_HEADERS)
+
+    assert "Booked" in response.get_data(as_text=True)
     assert response.headers["HX-Trigger"] == "booking-changed"
