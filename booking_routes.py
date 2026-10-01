@@ -113,3 +113,49 @@ def propose(service_request_id):
     response = make_response(render_template("partials/booking_proposed.html"))
     response.headers["HX-Trigger"] = "booking-changed"
     return response
+
+
+# ── Filler: pending bookings ─────────────────────────────────────────────────
+
+def _booking_changed(template, **context):
+    response = make_response(render_template(template, **context))
+    response.headers["HX-Trigger"] = "booking-changed"
+    return response
+
+
+def _booking_outcome(result, done_label):
+    if result.conflict:
+        return _booking_changed("partials/booking_action_result.html", ok=False,
+                                message="This booking has changed since it was listed — "
+                                        "the list has been refreshed.")
+    if not result.ok:
+        return render_template("partials/operation_outcome.html", outcome=result.operation_outcome)
+    return _booking_changed("partials/booking_action_result.html", ok=True, message=done_label)
+
+
+@booking_bp.route("/filler/imaging/pending")
+@login_required
+def filler_pending():
+    try:
+        pending = _client().pending_appointments(request.args["organization_id"])
+    except FhirError as error:
+        return render_template("partials/operation_outcome.html", outcome=error.operation_outcome)
+    return render_template("partials/booking_pending_list.html", pending=pending)
+
+
+@booking_bp.route("/filler/imaging/appointment/<appointment_id>/confirm", methods=["POST"])
+@login_required
+def filler_confirm(appointment_id):
+    instruction = request.form.get("patient_instruction", "").strip() or None
+    return _booking_outcome(_client().confirm(appointment_id, patient_instruction=instruction),
+                            "Booked")
+
+
+@booking_bp.route("/filler/imaging/appointment/<appointment_id>/decline", methods=["POST"])
+@login_required
+def filler_decline(appointment_id):
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        return render_template("partials/booking_action_result.html", ok=False,
+                               message="A reason is required to decline a booking.")
+    return _booking_outcome(_client().decline(appointment_id, reason=reason), "Declined")

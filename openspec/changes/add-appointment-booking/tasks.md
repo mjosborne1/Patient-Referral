@@ -45,14 +45,14 @@ Frontend
 ## 3. Confirm and decline — Ⓑ③④
 
 Backend
-- [ ] 3.1 `build_confirm_transaction()`: Appointment `booked`, Slot `busy`, Task and Group Task `service-booked`, all `ifMatch`; Task status unchanged
-- [ ] 3.2 `build_decline_transaction()`: Appointment `cancelled` with HealthcareService participant `declined` and `cancelationReason`; Slot `free`
-- [ ] 3.3 Client: pending Appointments for HealthcareService(s) with `_include` patient and based-on; resolve Task and Group Task from the SR
-- [ ] 3.4 Routes `POST /filler/imaging/appointment/<id>/confirm` and `/decline`
+- [x] 3.1 `build_confirm_transaction()`: Appointment `booked`, Slot `busy`, Task and Group Task `service-booked`, all `ifMatch`; Task status unchanged
+- [x] 3.2 `build_decline_transaction()`: Appointment `cancelled` with HealthcareService participant `declined` and `cancelationReason`; Slot `free`
+- [x] 3.3 Client: pending Appointments for HealthcareService(s) with `_include` patient and based-on; resolve Task and Group Task from the SR
+- [x] 3.4 Routes `POST /filler/imaging/appointment/<id>/confirm` and `/decline`
 
 Frontend
-- [ ] 3.5 "Pending bookings" list with a confirm form (patient instructions) and a decline form (reason)
-- [ ] 3.6 Smoke test: confirm, then the placer panel shows *Booked*
+- [x] 3.5 "Pending bookings" list with a confirm form (patient instructions) and a decline form (reason)
+- [x] 3.6 Smoke test: confirm, then the placer panel shows *Booked*
 
 ## 4. Filler direct-book — Ⓑ③④
 

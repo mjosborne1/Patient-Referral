@@ -21,6 +21,9 @@ PROFILE_APPOINTMENT = IG_PROFILE_BASE + "referral-appointment"
 
 SNOMED = "http://snomed.info/sct"
 IMAGING_CATEGORY = f"{SNOMED}|363679005"
+SERVICE_BOOKED = {"coding": [{
+    "system": "http://terminology.hl7.org.au/CodeSystem/task-business-status",
+    "code": "service-booked", "display": "Service booked"}]}
 # Imaging HealthcareService.type / Slot.serviceType choices, keyed by SNOMED code.
 IMAGING_SERVICE_TYPES = {
     code: {"system": SNOMED, "code": code, "display": display}
@@ -304,6 +307,39 @@ def imaging_request_rows(searchset):
     return rows
 
 
+
+def _participants_with(appointment, status_for):
+    """Copy of the Appointment's participants with status replaced where status_for returns one."""
+    return [{**p, "status": status_for(p) or p.get("status")}
+            for p in appointment.get("participant", [])]
+
+
+def build_confirm_transaction(appointment, slot, task, group_task, *, patient_instruction=None):
+    """Filler confirms: Appointment booked, Slot busy, Tasks stay accepted but service-booked."""
+    appointment_changes = {
+        "status": "booked",
+        "participant": _participants_with(appointment, lambda p: "accepted"),
+    }
+    if patient_instruction:
+        appointment_changes["patientInstruction"] = patient_instruction
+    entries = [_update_entry(appointment, **appointment_changes),
+               _update_entry(slot, status="busy")]
+    entries += [_update_entry(t, businessStatus=SERVICE_BOOKED) for t in (task, group_task) if t]
+    return {"resourceType": "Bundle", "type": "transaction", "entry": entries}
+
+
+def build_decline_transaction(appointment, slot, *, reason):
+    """Filler declines a proposed Appointment: cancelled with a reason, and the Slot freed."""
+    return {"resourceType": "Bundle", "type": "transaction", "entry": [
+        _update_entry(appointment, status="cancelled", cancelationReason={"text": reason},
+                      participant=_participants_with(
+                          appointment,
+                          lambda p: "declined" if p["actor"]["reference"].startswith(
+                              "HealthcareService/") else None)),
+        _update_entry(slot, status="free"),
+    ]}
+
+
 # ── FHIR server I/O ─────────────────────────────────────────────────────────
 
 def _created_id(transaction_response, resource_type):
@@ -339,6 +375,13 @@ class BookingResult:
     conflict: bool = False  # the Slot was taken (or changed) since it was offered
     appointment_id: str | None = None
     operation_outcome: dict | None = None
+
+
+@dataclass
+class PendingBooking:
+    appointment: dict
+    patient: dict | None
+    service_request: dict | None
 
 
 @dataclass
@@ -461,6 +504,75 @@ class BookingClient:
         if not response.ok:
             raise FhirError(response)
         return imaging_request_rows(response.json())
+
+    def _services_of(self, organization_id):
+        return self._search("HealthcareService", {"organization": organization_id})
+
+    def pending_appointments(self, organization_id):
+        """Proposed Appointments awaiting the organisation's confirmation, earliest first."""
+        services = self._services_of(organization_id)
+        if not services:
+            return []
+        response = self._request("GET", "Appointment", params=[
+            ("actor", ",".join(_ref(s) for s in services)),
+            ("status", "proposed"),
+            ("_include", "Appointment:patient"),
+            ("_include", "Appointment:based-on"),
+            ("_sort", "date"),
+            ("_count", "100"),
+        ])
+        if not response.ok:
+            raise FhirError(response)
+        resources = [e.get("resource", {}) for e in response.json().get("entry", [])]
+        by_ref = {_ref(r): r for r in resources if r.get("id")}
+        pending = []
+        for appointment in (r for r in resources if r.get("resourceType") == "Appointment"):
+            patient = next((by_ref.get(p["actor"]["reference"]) for p in appointment["participant"]
+                            if p.get("actor", {}).get("reference", "").startswith("Patient/")), None)
+            based_on = next(iter(appointment.get("basedOn", [])), {}).get("reference")
+            pending.append(PendingBooking(appointment, patient, by_ref.get(based_on)))
+        return pending
+
+    def _proposed_booking(self, appointment_id):
+        """The Appointment and its Slot as stored, or None if it is no longer awaiting the filler."""
+        appointment = self._read("Appointment", appointment_id)
+        slot = self._read("Slot", appointment["slot"][0]["reference"].split("/", 1)[1])
+        if appointment.get("status") not in ("proposed", "pending"):
+            return None
+        return appointment, slot
+
+    def _tasks_for(self, appointment):
+        """The fulfilment Task for the Appointment's ServiceRequest and its group Task."""
+        tasks = self._search("Task", {"focus": appointment["basedOn"][0]["reference"]})
+        task = next((t for t in tasks if t.get("partOf")), next(iter(tasks), None))
+        group_task = None
+        if task and task.get("partOf"):
+            group_task = self._read("Task", task["partOf"][0]["reference"].split("/", 1)[1])
+        return task, group_task
+
+    def confirm(self, appointment_id, *, patient_instruction=None):
+        """Filler confirms a proposed Appointment (booked, Slot busy, Tasks service-booked)."""
+        def action():
+            booking = self._proposed_booking(appointment_id)
+            if booking is None:
+                return BookingResult(ok=False, conflict=True)
+            appointment, slot = booking
+            task, group_task = self._tasks_for(appointment)
+            self._transact(build_confirm_transaction(appointment, slot, task, group_task,
+                                                     patient_instruction=patient_instruction))
+            return BookingResult(ok=True, appointment_id=appointment_id)
+        return self._booking(action)
+
+    def decline(self, appointment_id, *, reason):
+        """Filler declines a proposed Appointment (cancelled with reason, Slot freed)."""
+        def action():
+            booking = self._proposed_booking(appointment_id)
+            if booking is None:
+                return BookingResult(ok=False, conflict=True)
+            appointment, slot = booking
+            self._transact(build_decline_transaction(appointment, slot, reason=reason))
+            return BookingResult(ok=True, appointment_id=appointment_id)
+        return self._booking(action)
 
     def locations_for_organization(self, organization_id):
         return self._search("Location", {"organization": organization_id})

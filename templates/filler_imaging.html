@@ -90,6 +90,27 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ── Pending bookings ──────────────────────────────── -->
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-hourglass-half me-1"></i>Bookings awaiting confirmation</span>
+                        <button class="btn btn-sm btn-outline-secondary" title="Refresh"
+                                hx-get="/filler/imaging/pending" hx-include="#organisationSelect"
+                                hx-target="#pendingBookings">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="pendingBookings" hx-get="/filler/imaging/pending"
+                             hx-include="#organisationSelect"
+                             hx-trigger="change from:#organisationSelect, booking-changed from:body delay:1500ms">
+                            <p class="text-muted mb-0">Select a filler organisation to see bookings.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     </main>
