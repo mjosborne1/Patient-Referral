@@ -1,9 +1,11 @@
 import os
+import logging
 import requests
 import urllib3
 from datetime import datetime
 from dotenv import load_dotenv
 from typing import Optional, Tuple, Union
+from flask import request, session
 
 # Internal sentinel: distinguishes "caller didn't pass auth" (use env fallback)
 # from "caller explicitly passed None" (force unauthenticated request).
@@ -127,3 +129,52 @@ def get_form_data(request):
         form_data[key] = values if len(values) > 1 else values[0]
     
     return form_data
+
+
+# ── Per-request FHIR server URL and credentials ──────────────────────────────
+
+def get_fhir_bearer_token():
+    """Get Bearer token from request header (preferred) or Flask session."""
+    token = request.headers.get('X-FHIR-Bearer-Token')
+    if not token:
+        token = session.get('smart_access_token')
+    return token
+
+def get_fhir_server_url():
+    # Try to get from custom header (set by frontend from localStorage), fallback to default
+    url = request.headers.get('X-FHIR-Server-URL')
+    if not url:
+        url = os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
+    return url
+
+def get_fhir_auth_credentials():
+    """Returns (username, password) tuple, or None for unauthenticated requests.
+    Never falls back to .env credentials when the frontend has specified a custom server URL,
+    to avoid leaking credentials to a different server.
+    """
+    # 1. Per-request credentials sent by the frontend from Settings
+    username = request.headers.get('X-FHIR-Username')
+    password = request.headers.get('X-FHIR-Password')
+    if username and password:
+        logging.debug(f"Auth check - using header credentials for user: {username}")
+        return (username, password)
+
+    # 2. Frontend specified a custom server but no auth headers → that server
+    #    needs no authentication; do NOT fall back to .env credentials which belong
+    #    to a different server.
+    if request.headers.get('X-FHIR-Server-URL'):
+        logging.debug("Auth check - custom server URL present but no auth headers; unauthenticated")
+        return None
+
+    # 3. No frontend override at all. Only use .env credentials when FHIR_SERVER_URL
+    #    is also in .env (they were configured together for the same server).
+    if not os.environ.get('FHIR_SERVER_URL'):
+        logging.debug("Auth check - no FHIR_SERVER_URL in env; omitting env credentials")
+        return None
+
+    env_username = os.environ.get('FHIR_USERNAME')
+    env_password = os.environ.get('FHIR_PASSWORD')
+    logging.debug(f"Auth check - falling back to env credentials, username: {env_username}")
+    if env_username and env_password:
+        return (env_username, env_password)
+    return None

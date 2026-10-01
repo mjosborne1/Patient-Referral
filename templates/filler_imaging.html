@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imaging Bookings — Filler</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
+</head>
+<body>
+    {% set active_page = 'filler_imaging' %}
+    {% include 'partials/sidebar.html' %}
+
+    <main class="main-content">
+    <div class="container-fluid mt-4">
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="text-primary mb-0">
+                <i class="fas fa-calendar-check me-2"></i>Imaging Bookings
+            </h2>
+            <select id="organisationSelect" class="form-select form-select-sm" style="width:auto;"
+                    name="organization_id" form="availabilityForm"
+                    hx-get="/filler/imaging/locations" hx-trigger="change"
+                    hx-target="#locationSelect" hx-include="this">
+                <option value="">Loading organisations…</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <!-- ── Publish availability ──────────────────────────── -->
+            <div class="col-lg-5">
+                <div class="card">
+                    <div class="card-header fw-semibold">
+                        <i class="fas fa-calendar-plus me-1"></i>Publish availability
+                    </div>
+                    <div class="card-body">
+                        <form id="availabilityForm" hx-post="/filler/imaging/availability"
+                              hx-target="#availabilityResult" hx-disabled-elt="find button">
+                            <div class="mb-2">
+                                <label for="serviceType" class="form-label">Service</label>
+                                <select id="serviceType" name="service_type" class="form-select" required>
+                                    {% for st in service_types %}
+                                    <option value="{{ st.code }}">{{ st.display }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label for="locationSelect" class="form-label">Location</label>
+                                <select id="locationSelect" name="location_id" class="form-select" required>
+                                    <option value="" disabled selected>Select an organisation first</option>
+                                </select>
+                            </div>
+                            <div class="row g-2 mb-2">
+                                <div class="col">
+                                    <label for="startDate" class="form-label">From</label>
+                                    <input id="startDate" type="date" name="start_date" class="form-control" value="{{ today }}" required>
+                                </div>
+                                <div class="col">
+                                    <label for="endDate" class="form-label">To</label>
+                                    <input id="endDate" type="date" name="end_date" class="form-control" value="{{ today }}" required>
+                                </div>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col">
+                                    <label for="dayStart" class="form-label">Day starts</label>
+                                    <input id="dayStart" type="time" name="day_start" class="form-control" value="09:00" required>
+                                </div>
+                                <div class="col">
+                                    <label for="dayEnd" class="form-label">Day ends</label>
+                                    <input id="dayEnd" type="time" name="day_end" class="form-control" value="17:00" required>
+                                </div>
+                                <div class="col">
+                                    <label for="slotMinutes" class="form-label">Slot (min)</label>
+                                    <input id="slotMinutes" type="number" name="slot_minutes" class="form-control" value="30" min="5" step="5" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload me-1"></i>Publish slots
+                            </button>
+                            <small class="text-muted ms-2">Weekdays only; already-published slots are skipped.</small>
+                        </form>
+                        <div id="availabilityResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </main>
+
+    <script>
+    // Inject FHIR server URL and auth headers on every HTMX request,
+    // matching the pattern used by filler_dashboard.html.
+    function bookingFhirHeaders() {
+        var h = {};
+        var fhirServerUrl = localStorage.getItem('fhir_server_url');
+        if (fhirServerUrl) h['X-FHIR-Server-URL'] = fhirServerUrl;
+        var authMode = localStorage.getItem('fhirAuthMode') || 'none';
+        if (authMode === 'basic') {
+            var u = localStorage.getItem('fhirUsername');
+            var p = localStorage.getItem('fhirPassword');
+            if (u && p) { h['X-FHIR-Username'] = u; h['X-FHIR-Password'] = p; }
+        } else if (authMode === 'smart') {
+            var token = localStorage.getItem('smart_access_token');
+            if (token) h['X-FHIR-Bearer-Token'] = token;
+        }
+        // Legacy basic-auth fallback
+        if (!localStorage.getItem('fhirAuthMode') && localStorage.getItem('useFhirAuth') === 'true') {
+            var lu = localStorage.getItem('fhirUsername');
+            var lp = localStorage.getItem('fhirPassword');
+            if (lu && lp) { h['X-FHIR-Username'] = lu; h['X-FHIR-Password'] = lp; }
+        }
+        return h;
+    }
+
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+        Object.assign(evt.detail.headers, bookingFhirHeaders());
+    });
+
+    // Filler organisations are those that own group Tasks (same source as the airport board).
+    fetch('/api/organisations/with-tasks', { headers: bookingFhirHeaders() })
+        .then(function(r) { return r.ok ? r.json() : []; })
+        .then(function(orgs) {
+            var select = document.getElementById('organisationSelect');
+            if (!Array.isArray(orgs) || orgs.length === 0) {
+                select.innerHTML = '<option value="">No filler organisations found</option>';
+                return;
+            }
+            orgs.sort(function(a, b) { return (b.type === 'radiology') - (a.type === 'radiology'); });
+            select.innerHTML = '<option value="" disabled selected>Select filler organisation…</option>' +
+                orgs.map(function(o) {
+                    var opt = document.createElement('option');
+                    opt.value = o.id;
+                    opt.textContent = o.name + (o.typeDisplay ? ' (' + o.typeDisplay + ')' : '');
+                    return opt.outerHTML;
+                }).join('');
+        });
+    </script>
+</body>
+</html>

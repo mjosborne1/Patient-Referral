@@ -11,6 +11,7 @@ import base64
 import secrets
 from urllib.parse import urlencode, urlparse
 from fhirutils import fhir_get as _original_fhir_get, format_fhir_date, get_text_display, find_category, get_form_data
+from fhirutils import get_fhir_bearer_token, get_fhir_server_url, get_fhir_auth_credentials
 from bundler import create_request_bundle
 from referral_bundler import create_referral_bundle
 from provider_directory import search_providers, search_roles, search_practitioners_by_service, search_unified
@@ -18,10 +19,13 @@ from codesearch import search_codes as cs_search
 from fhir_parser import extract_resources
 from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
+from booking_routes import booking_bp
 
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Needed for Flask session management
+
+app.register_blueprint(booking_bp)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -62,58 +66,12 @@ def auto_login():
     if not current_user.is_authenticated:
         login_user(MockUser())
 
-def get_fhir_bearer_token():
-    """Get Bearer token from request header (preferred) or Flask session."""
-    token = request.headers.get('X-FHIR-Bearer-Token')
-    if not token:
-        token = session.get('smart_access_token')
-    return token
-
 def fhir_get(path, fhir_server_url=None, **kwargs):
     """Wrapper around fhirutils.fhir_get that automatically injects Bearer token if available."""
     bearer = get_fhir_bearer_token()
     if bearer and 'bearer_token' not in kwargs:
         kwargs['bearer_token'] = bearer
     return _original_fhir_get(path, fhir_server_url=fhir_server_url, **kwargs)
-
-def get_fhir_server_url():
-    # Try to get from custom header (set by frontend from localStorage), fallback to default
-    url = request.headers.get('X-FHIR-Server-URL')
-    if not url:
-        url = os.environ.get('FHIR_SERVER_URL', 'https://aucore.aidbox.beda.software/fhir')
-    return url
-
-def get_fhir_auth_credentials():
-    """Returns (username, password) tuple, or None for unauthenticated requests.
-    Never falls back to .env credentials when the frontend has specified a custom server URL,
-    to avoid leaking credentials to a different server.
-    """
-    # 1. Per-request credentials sent by the frontend from Settings
-    username = request.headers.get('X-FHIR-Username')
-    password = request.headers.get('X-FHIR-Password')
-    if username and password:
-        logging.debug(f"Auth check - using header credentials for user: {username}")
-        return (username, password)
-
-    # 2. Frontend specified a custom server but no auth headers → that server
-    #    needs no authentication; do NOT fall back to .env credentials which belong
-    #    to a different server.
-    if request.headers.get('X-FHIR-Server-URL'):
-        logging.debug("Auth check - custom server URL present but no auth headers; unauthenticated")
-        return None
-
-    # 3. No frontend override at all. Only use .env credentials when FHIR_SERVER_URL
-    #    is also in .env (they were configured together for the same server).
-    if not os.environ.get('FHIR_SERVER_URL'):
-        logging.debug("Auth check - no FHIR_SERVER_URL in env; omitting env credentials")
-        return None
-
-    env_username = os.environ.get('FHIR_USERNAME')
-    env_password = os.environ.get('FHIR_PASSWORD')
-    logging.debug(f"Auth check - falling back to env credentials, username: {env_username}")
-    if env_username and env_password:
-        return (env_username, env_password)
-    return None
 
 # ── SMART App Launch ─────────────────────────────────────────────────────────
 
