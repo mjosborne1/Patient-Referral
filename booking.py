@@ -5,8 +5,9 @@ Pure builders for Schedule / Slot / Appointment resources and the transaction
 Bundles that move them through the booking lifecycle, plus a thin client that
 is the only part that talks to the FHIR server.
 """
+import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,7 @@ PROFILE_SLOT = IG_PROFILE_BASE + "booking-slot"
 PROFILE_APPOINTMENT = IG_PROFILE_BASE + "referral-appointment"
 
 SNOMED = "http://snomed.info/sct"
+IMAGING_CATEGORY = f"{SNOMED}|363679005"
 # Imaging HealthcareService.type / Slot.serviceType choices, keyed by SNOMED code.
 IMAGING_SERVICE_TYPES = {
     code: {"system": SNOMED, "code": code, "display": display}
@@ -30,6 +32,28 @@ IMAGING_SERVICE_TYPES = {
         ("788009005", "Nuclear medicine service"),
     ]
 }
+
+
+# Modality keywords in ServiceRequest.code display/text -> imaging service type. A keyword match
+# is enough for the demo order sets; SNOMED subsumption would be the rigorous alternative.
+_MODALITY_PATTERNS = [
+    (re.compile(r"\bcomputed tomography\b|\bct\b", re.I), "310128004"),
+    (re.compile(r"\bmagnetic resonance\b|\bmri?\b", re.I), "310127009"),
+    (re.compile(r"\bultrasound\b|\bultrasonography\b|\bus\b", re.I), "310169008"),
+    (re.compile(r"x-ray|\bradiograph", re.I), "933537131000036109"),
+    (re.compile(r"\bnuclear\b|scintigraph|\bpet\b", re.I), "788009005"),
+]
+
+
+def service_type_for(service_request):
+    """The imaging service type Coding for a ServiceRequest's procedure, or None if unknown."""
+    code = service_request.get("code", {})
+    terms = [c.get("display", "") for c in code.get("coding", [])] + [code.get("text", "")]
+    for term in filter(None, terms):
+        for pattern, service_code in _MODALITY_PATTERNS:
+            if pattern.search(term):
+                return IMAGING_SERVICE_TYPES[service_code]
+    return None
 
 
 def generate_slot_times(start_date: date, end_date: date, *, day_start: time, day_end: time,
@@ -127,12 +151,194 @@ def _operation_outcome(response):
         "diagnostics": f"HTTP {response.status_code}: {response.text[:500]}"}]}
 
 
+ACTIVE_APPOINTMENT_STATUSES = {"proposed", "pending", "booked"}
+
+
+def active_appointment(appointments):
+    return next((a for a in appointments if a.get("status") in ACTIVE_APPOINTMENT_STATUSES), None)
+
+
+def is_bookable(task, appointments):
+    """An imaging request is bookable once its Task is accepted and nothing is booked or pending."""
+    return bool(task) and task.get("status") == "accepted" and not active_appointment(appointments)
+
+
+def _ref(resource):
+    return f"{resource['resourceType']}/{resource['id']}"
+
+
+def _for_update(resource, **changes):
+    """Copy of a server resource for PUT: server-managed meta dropped, profile claims kept."""
+    updated = {k: v for k, v in resource.items() if k != "meta"}
+    profiles = resource.get("meta", {}).get("profile")
+    if profiles:
+        updated["meta"] = {"profile": profiles}
+    updated.update(changes)
+    return updated
+
+
+def _update_entry(resource, **changes):
+    """Transaction PUT of a changed server resource, guarded by If-Match on the version read."""
+    request = {"method": "PUT", "url": _ref(resource)}
+    version = resource.get("meta", {}).get("versionId")
+    if version:
+        request["ifMatch"] = f'W/"{version}"'
+    return {"fullUrl": _urn(), "resource": _for_update(resource, **changes), "request": request}
+
+
+def _schedule_actor(schedule, resource_type):
+    return next((a for a in schedule.get("actor", [])
+                 if a.get("reference", "").startswith(f"{resource_type}/")), None)
+
+
+def build_appointment(service_request, slot, schedule, *, status, claim_profiles=True):
+    """A referral Appointment for the request in the given Slot (participants per the design)."""
+    participants = [{"actor": service_request["subject"], "required": "required",
+                     "status": "accepted"}]
+    for resource_type in ("HealthcareService", "Location"):
+        actor = _schedule_actor(schedule, resource_type)
+        if actor:
+            participants.append({"actor": actor, "required": "required",
+                                 "status": "accepted" if status == "booked" else "needs-action"})
+    if service_request.get("requester"):
+        participants.append({"actor": service_request["requester"],
+                             "required": "information-only", "status": "accepted"})
+    appointment = {
+        "resourceType": "Appointment",
+        "identifier": [{"system": "urn:ietf:rfc:3986", "value": _urn()}],
+        "status": status,
+        "serviceType": slot.get("serviceType", []),
+        "start": slot["start"],
+        "end": slot["end"],
+        "created": datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).isoformat(timespec="seconds"),
+        "slot": [{"reference": _ref(slot)}],
+        "basedOn": [{"reference": _ref(service_request)}],
+        "participant": participants,
+    }
+    for reason in ("reasonCode", "reasonReference"):
+        if service_request.get(reason):
+            appointment[reason] = service_request[reason]
+    return _with_profile(appointment, PROFILE_APPOINTMENT, claim_profiles)
+
+
+def build_propose_transaction(service_request, slot, schedule, *, claim_profiles=True):
+    """Referrer's booking request: POST a proposed Appointment and hold the Slot tentatively."""
+    appointment = build_appointment(service_request, slot, schedule, status="proposed",
+                                    claim_profiles=claim_profiles)
+    return {"resourceType": "Bundle", "type": "transaction", "entry": [
+        _entry(appointment, "POST", "Appointment"),
+        _update_entry(slot, status="busy-tentative"),
+    ]}
+
+
+SLOT_SEARCH_DAYS = 14
+
+
+def _parse_fhir_datetime(value, tz, *, end_of_day=False):
+    """Parse a FHIR date or dateTime; a bare date is the start (or end) of that local day."""
+    if len(value) == 10:
+        day = date.fromisoformat(value) + (timedelta(days=1) if end_of_day else timedelta())
+        return datetime.combine(day, time(0), tz)
+    return _instant(value)
+
+
+def slot_search_window(service_request, now):
+    """(start, end) to search for free Slots: the requested occurrence period, or a fortnight."""
+    period = service_request.get("occurrencePeriod", {})
+    start = now
+    if period.get("start"):
+        start = max(now, _parse_fhir_datetime(period["start"], now.tzinfo))
+    if period.get("end"):
+        end = _parse_fhir_datetime(period["end"], now.tzinfo, end_of_day=True)
+    else:
+        end = start + timedelta(days=SLOT_SEARCH_DAYS)
+    return start, end
+
+
+
+@dataclass
+class RequestRow:
+    service_request: dict
+    task: dict | None
+    appointment: dict | None  # the active Appointment, else the most recent one
+    state: str  # awaiting-triage | rejected | bookable | proposed | booked | declined | cancelled | closed
+    bookable: bool
+
+
+def _declined(appointment):
+    return any(p.get("status") == "declined" for p in appointment.get("participant", []))
+
+
+def _booking_state(task, appointment):
+    task_status = (task or {}).get("status")
+    if appointment and appointment["status"] in ACTIVE_APPOINTMENT_STATUSES:
+        return "booked" if appointment["status"] == "booked" else "proposed"
+    if task_status in (None, "draft", "requested", "received", "on-hold"):
+        return "awaiting-triage"
+    if task_status == "rejected":
+        return "rejected"
+    if task_status != "accepted":
+        return "closed"
+    if appointment and appointment["status"] == "cancelled":
+        return "declined" if _declined(appointment) else "cancelled"
+    return "bookable"
+
+
+def imaging_request_rows(searchset):
+    """Panel rows from a ServiceRequest search with Task:focus and Appointment:based-on revincludes."""
+    resources = [e.get("resource", {}) for e in searchset.get("entry", [])]
+    service_requests = [r for r in resources if r.get("resourceType") == "ServiceRequest"]
+    rows = []
+    for service_request in service_requests:
+        ref = _ref(service_request)
+        task = next((r for r in resources if r.get("resourceType") == "Task"
+                     and r.get("focus", {}).get("reference") == ref), None)
+        appointments = sorted(
+            (r for r in resources if r.get("resourceType") == "Appointment"
+             and any(b.get("reference") == ref for b in r.get("basedOn", []))),
+            key=lambda a: a.get("created", ""), reverse=True)
+        appointment = active_appointment(appointments) or next(iter(appointments), None)
+        rows.append(RequestRow(service_request, task, appointment,
+                               _booking_state(task, appointment),
+                               is_bookable(task, appointments)))
+    return rows
+
+
+# ── FHIR server I/O ─────────────────────────────────────────────────────────
+
+def _created_id(transaction_response, resource_type):
+    """Id of the first resource of resource_type created or updated in a transaction response."""
+    for entry in transaction_response.get("entry", []):
+        location = entry.get("response", {}).get("location", "")
+        parts = location.split("/")
+        if resource_type in parts:
+            return parts[parts.index(resource_type) + 1]
+    return None
+
+
 class FhirError(Exception):
     """A FHIR interaction failed; carries the server's (or a synthesised) OperationOutcome."""
 
     def __init__(self, response):
+        self.status_code = response.status_code
         self.operation_outcome = _operation_outcome(response)
         super().__init__(f"HTTP {response.status_code}")
+
+
+@dataclass
+class SlotSearchResult:
+    ok: bool
+    service_request: dict | None = None
+    slots: list = field(default_factory=list)  # [(slot, schedule)] ordered by start
+    operation_outcome: dict | None = None
+
+
+@dataclass
+class BookingResult:
+    ok: bool
+    conflict: bool = False  # the Slot was taken (or changed) since it was offered
+    appointment_id: str | None = None
+    operation_outcome: dict | None = None
 
 
 @dataclass
@@ -167,6 +373,94 @@ class BookingClient:
             raise FhirError(response)
         return [e["resource"] for e in response.json().get("entry", [])
                 if e.get("resource", {}).get("resourceType") == resource_type]
+
+    def _read(self, resource_type, resource_id):
+        response = self._request("GET", f"{resource_type}/{resource_id}")
+        if not response.ok:
+            raise FhirError(response)
+        return response.json()
+
+    def free_slots(self, service_request_id, *, now=None, start=None, end=None):
+        """Free Slots offered by the request's performer for its imaging service, by start time."""
+        try:
+            service_request = self._read("ServiceRequest", service_request_id)
+            now = now or datetime.now(ZoneInfo(DEFAULT_TIMEZONE))
+            default_start, default_end = slot_search_window(service_request, now)
+            return SlotSearchResult(ok=True, service_request=service_request,
+                                    slots=self._free_slots(service_request, start or default_start,
+                                                           end or default_end))
+        except FhirError as error:
+            return SlotSearchResult(ok=False, operation_outcome=error.operation_outcome)
+
+    def _free_slots(self, service_request, start, end):
+        organizations = [p["reference"].split("/", 1)[1] for p in service_request.get("performer", [])
+                         if p.get("reference", "").startswith("Organization/")]
+        if not organizations:
+            return []
+        params = {"organization": ",".join(organizations)}
+        service_type = service_type_for(service_request)
+        if service_type:
+            params["service-type"] = _token(service_type)
+        services = self._search("HealthcareService", params)
+        if not services:
+            return []
+        response = self._request("GET", "Slot", params=[
+            ("schedule.actor", ",".join(_ref(s) for s in services)),
+            ("status", "free"),
+            ("start", f"ge{start.isoformat()}"),
+            ("start", f"lt{end.isoformat()}"),
+            ("_include", "Slot:schedule"),
+            ("_sort", "start"),
+            ("_count", "100"),
+        ])
+        if not response.ok:
+            raise FhirError(response)
+        resources = [e.get("resource", {}) for e in response.json().get("entry", [])]
+        schedules = {_ref(r): r for r in resources if r.get("resourceType") == "Schedule"}
+        return [(r, schedules.get(r["schedule"]["reference"], {}))
+                for r in resources if r.get("resourceType") == "Slot"]
+
+    def _transact(self, bundle):
+        """POST a transaction; return the response Bundle or raise FhirError."""
+        response = self._request("POST", json=bundle)
+        if not response.ok:
+            raise FhirError(response)
+        return response.json()
+
+    def _booking(self, action):
+        """Run a booking action, mapping version conflicts and server errors to a BookingResult."""
+        try:
+            return action()
+        except FhirError as error:
+            return BookingResult(ok=False, conflict=error.status_code in (409, 412),
+                                 operation_outcome=error.operation_outcome)
+
+    def propose(self, service_request_id, slot_id, *, claim_profiles=True):
+        """Referrer proposes an Appointment in a free Slot, holding the Slot as busy-tentative."""
+        def action():
+            service_request = self._read("ServiceRequest", service_request_id)
+            slot = self._read("Slot", slot_id)
+            if slot.get("status") != "free":
+                return BookingResult(ok=False, conflict=True)
+            schedule = self._read("Schedule", slot["schedule"]["reference"].split("/", 1)[1])
+            response = self._transact(build_propose_transaction(
+                service_request, slot, schedule, claim_profiles=claim_profiles))
+            return BookingResult(ok=True, appointment_id=_created_id(response, "Appointment"))
+        return self._booking(action)
+
+    def patient_imaging_requests(self, patient_id):
+        """Panel rows for the patient's imaging ServiceRequests, newest first."""
+        response = self._request("GET", "ServiceRequest", params=[
+            ("subject", f"Patient/{patient_id}"),
+            ("category", IMAGING_CATEGORY),
+            ("_revinclude", "Task:focus"),
+            ("_revinclude", "Appointment:based-on"),
+            ("_sort", "-authored"),
+            ("_count", "50"),
+        ])
+        if not response.ok:
+            raise FhirError(response)
+        return imaging_request_rows(response.json())
 
     def locations_for_organization(self, organization_id):
         return self._search("Location", {"organization": organization_id})

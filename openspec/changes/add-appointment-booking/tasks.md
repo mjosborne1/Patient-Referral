@@ -28,19 +28,19 @@ Frontend
 ## 2. Placer panel, Slot search and propose — Ⓑ⑤
 
 Backend
-- [ ] 2.1 `SERVICE_TYPE_MAP` plus `service_type_for(sr)` with a no-filter fallback
-- [ ] 2.2 `is_bookable(task, appointments)` gating
-- [ ] 2.3 Client: patient imaging SRs with `_revinclude=Task:focus` and `_revinclude=Appointment:based-on`
-- [ ] 2.4 Client: SR → HealthcareService → Slot search (window defaults to `occurrencePeriod` or today+14d)
-- [ ] 2.5 `build_appointment()` (participants per design) and `build_propose_transaction()` with Slot `ifMatch`
-- [ ] 2.6 Routes: `GET /booking/patient/<pid>/panel`, `GET /booking/sr/<id>/slots`, `POST /booking/sr/<id>/propose`
-- [ ] 2.7 Route test: 412 from the server produces the "slot just taken" message plus a re-search
+- [x] 2.1 `SERVICE_TYPE_MAP` plus `service_type_for(sr)` with a no-filter fallback
+- [x] 2.2 `is_bookable(task, appointments)` gating
+- [x] 2.3 Client: patient imaging SRs with `_revinclude=Task:focus` and `_revinclude=Appointment:based-on`
+- [x] 2.4 Client: SR → HealthcareService → Slot search (window defaults to `occurrencePeriod` or today+14d)
+- [x] 2.5 `build_appointment()` (participants per design) and `build_propose_transaction()` with Slot `ifMatch`
+- [x] 2.6 Routes: `GET /booking/patient/<pid>/panel`, `GET /booking/sr/<id>/slots`, `POST /booking/sr/<id>/propose`
+- [x] 2.7 Route test: 412 from the server produces the "slot just taken" message plus a re-search
 
 Frontend
-- [ ] 2.8 `partials/booking_panel.html` on `patient_details.html` (hx-get on load, refresh button)
-- [ ] 2.9 `partials/booking_slot_picker.html` modal (Slots grouped by day)
-- [ ] 2.10 `partials/operation_outcome.html`
-- [ ] 2.11 Smoke test: panel renders for a patient with an accepted imaging Task
+- [x] 2.8 `partials/booking_panel.html` on `patient_details.html` (hx-get on load, refresh button)
+- [x] 2.9 `partials/booking_slot_picker.html` modal (Slots grouped by day)
+- [x] 2.10 `partials/operation_outcome.html`
+- [x] 2.11 Smoke test: panel renders for a patient with an accepted imaging Task
 
 ## 3. Confirm and decline — Ⓑ③④
 

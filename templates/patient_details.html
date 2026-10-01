@@ -153,7 +153,37 @@
                     <i class="fas fa-paper-plane me-1"></i> Send Request
                 </button>
             </div>
-            </form>   
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-calendar-check me-2"></i> Requests &amp; Appointments</span>
+        <button class="btn btn-sm btn-light" hx-get="/booking/patient/{{ patient.id }}/panel"
+                hx-target="#bookingPanel" title="Refresh">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
+    <div class="card-body">
+        <div id="bookingPanel" hx-get="/booking/patient/{{ patient.id }}/panel"
+             hx-trigger="load, booking-changed from:body">
+            <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading imaging requests…</div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bookingModalLabel"><i class="fas fa-calendar-plus me-2"></i>Book imaging appointment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="bookingModalBody">
+                <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Finding free slots…</div>
+            </div>
         </div>
     </div>
 </div>

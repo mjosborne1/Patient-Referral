@@ -103,9 +103,22 @@ An imaging SR is bookable when its fulfilment Task is `accepted` **and** no Appo
 ## Service-type mapping
 
 `ServiceRequest.code` is an imaging *procedure*, but `HealthcareService.type` and
-`Slot.serviceType` are a *service* (e.g. SCT 310128004 "Computed tomography service"). A static
-map in `booking.py` goes from modality to service type, keyed on the procedure code or its
-modality hierarchy. If a code has no entry, the `service-type` filter is omitted.
+`Slot.serviceType` are a *service* (e.g. SCT 310128004 "Computed tomography service").
+`service_type_for()` matches modality keywords in `code.coding.display` and `code.text`:
+
+| Keywords | Service type |
+|---|---|
+| CT, computed tomography | 310128004 |
+| MRI, magnetic resonance | 310127009 |
+| US, ultrasound | 310169008 |
+| X-ray, radiograph | 933537131000036109 |
+| nuclear, scintigraphy, PET | 788009005 |
+
+If nothing matches, the `service-type` filter is omitted. SNOMED subsumption via Ontoserver
+would be more rigorous, but it adds a runtime terminology dependency.
+
+The Slot picker has **no Location filter in v1**. Slots are grouped by day, and each one shows
+its Schedule's actors as a tooltip.
 
 ## Slot generation
 
