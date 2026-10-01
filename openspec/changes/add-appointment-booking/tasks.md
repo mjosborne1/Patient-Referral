@@ -62,10 +62,10 @@ Frontend
 
 ## 5. Cancel and atomic reschedule — Ⓑ⑤④
 
-- [ ] 5.1 `build_cancel_transaction()` (Appointment `cancelled`, Slot `free`, Task businessStatus removed)
-- [ ] 5.2 `build_reschedule_transaction()` = cancel entries + propose entries in one transaction
-- [ ] 5.3 Routes `POST /booking/appointment/<id>/cancel` and `/reschedule` (route tests incl. 412 on the new Slot)
-- [ ] 5.4 Panel actions: Cancel (reason) and Reschedule (opens the slot picker)
+- [x] 5.1 `build_cancel_transaction()` (Appointment `cancelled`, Slot `free`, Task businessStatus removed)
+- [x] 5.2 `build_reschedule_transaction()` = cancel entries + propose entries in one transaction
+- [x] 5.3 Routes `POST /booking/appointment/<id>/cancel` and `/reschedule` (route tests incl. 412 on the new Slot)
+- [x] 5.4 Panel actions: Cancel (reason) and Reschedule (opens the slot picker)
 
 ## 6. Business-status fix and IG feedback — ④
 

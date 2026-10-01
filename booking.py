@@ -170,9 +170,9 @@ def _ref(resource):
     return f"{resource['resourceType']}/{resource['id']}"
 
 
-def _for_update(resource, **changes):
+def _for_update(resource, remove=(), **changes):
     """Copy of a server resource for PUT: server-managed meta dropped, profile claims kept."""
-    updated = {k: v for k, v in resource.items() if k != "meta"}
+    updated = {k: v for k, v in resource.items() if k != "meta" and k not in remove}
     profiles = resource.get("meta", {}).get("profile")
     if profiles:
         updated["meta"] = {"profile": profiles}
@@ -180,13 +180,14 @@ def _for_update(resource, **changes):
     return updated
 
 
-def _update_entry(resource, **changes):
+def _update_entry(resource, remove=(), **changes):
     """Transaction PUT of a changed server resource, guarded by If-Match on the version read."""
     request = {"method": "PUT", "url": _ref(resource)}
     version = resource.get("meta", {}).get("versionId")
     if version:
         request["ifMatch"] = f'W/"{version}"'
-    return {"fullUrl": _urn(), "resource": _for_update(resource, **changes), "request": request}
+    return {"fullUrl": _urn(), "resource": _for_update(resource, remove, **changes),
+            "request": request}
 
 
 def _schedule_actor(schedule, resource_type):
@@ -360,15 +361,45 @@ def build_direct_book_transaction(service_request, slot, schedule, task, group_t
     return {"resourceType": "Bundle", "type": "transaction", "entry": entries}
 
 
+
+def _is_service_booked(task):
+    return any(c.get("code") == "service-booked"
+               for c in (task or {}).get("businessStatus", {}).get("coding", []))
+
+
+def _cancel_entries(appointment, slot, task, group_task, reason):
+    entries = [_update_entry(appointment, status="cancelled", cancelationReason={"text": reason}),
+               _update_entry(slot, status="free")]
+    entries += [_update_entry(t, remove=("businessStatus",))
+                for t in (task, group_task) if _is_service_booked(t)]
+    return entries
+
+
+def build_cancel_transaction(appointment, slot, task, group_task, *, reason):
+    """Referrer cancels: Appointment cancelled, Slot freed, service-booked cleared from Tasks."""
+    return {"resourceType": "Bundle", "type": "transaction",
+            "entry": _cancel_entries(appointment, slot, task, group_task, reason)}
+
+
+def build_reschedule_transaction(appointment, slot, task, group_task, service_request, new_slot,
+                                 new_schedule, *, reason="Rescheduled", claim_profiles=True):
+    """Cancel the current booking and propose the new Slot atomically (one transaction)."""
+    propose = build_propose_transaction(service_request, new_slot, new_schedule,
+                                        claim_profiles=claim_profiles)
+    return {"resourceType": "Bundle", "type": "transaction",
+            "entry": _cancel_entries(appointment, slot, task, group_task, reason) + propose["entry"]}
+
+
 # ── FHIR server I/O ─────────────────────────────────────────────────────────
 
-def _created_id(transaction_response, resource_type):
-    """Id of the first resource of resource_type created or updated in a transaction response."""
-    for entry in transaction_response.get("entry", []):
-        location = entry.get("response", {}).get("location", "")
-        parts = location.split("/")
-        if resource_type in parts:
-            return parts[parts.index(resource_type) + 1]
+def _created_id(request_bundle, transaction_response, resource_type):
+    """Server id of the resource_type the transaction POSTed (response entries align by index)."""
+    responses = transaction_response.get("entry", [])
+    for index, entry in enumerate(request_bundle["entry"]):
+        if entry["request"] == {"method": "POST", "url": resource_type} and index < len(responses):
+            parts = responses[index].get("response", {}).get("location", "").split("/")
+            if resource_type in parts and parts.index(resource_type) + 1 < len(parts):
+                return parts[parts.index(resource_type) + 1]
     return None
 
 
@@ -506,9 +537,10 @@ class BookingClient:
             if slot.get("status") != "free":
                 return BookingResult(ok=False, conflict=True)
             schedule = self._read("Schedule", slot["schedule"]["reference"].split("/", 1)[1])
-            response = self._transact(build_propose_transaction(
-                service_request, slot, schedule, claim_profiles=claim_profiles))
-            return BookingResult(ok=True, appointment_id=_created_id(response, "Appointment"))
+            bundle = build_propose_transaction(service_request, slot, schedule,
+                                               claim_profiles=claim_profiles)
+            return BookingResult(ok=True, appointment_id=_created_id(
+                bundle, self._transact(bundle), "Appointment"))
         return self._booking(action)
 
     def patient_imaging_requests(self, patient_id):
@@ -619,10 +651,46 @@ class BookingClient:
                 return BookingResult(ok=False, conflict=True)
             schedule = self._read("Schedule", slot["schedule"]["reference"].split("/", 1)[1])
             task, group_task = self._tasks_for(_ref(service_request))
-            response = self._transact(build_direct_book_transaction(
+            bundle = build_direct_book_transaction(
                 service_request, slot, schedule, task, group_task,
-                patient_instruction=patient_instruction, claim_profiles=claim_profiles))
-            return BookingResult(ok=True, appointment_id=_created_id(response, "Appointment"))
+                patient_instruction=patient_instruction, claim_profiles=claim_profiles)
+            return BookingResult(ok=True, appointment_id=_created_id(
+                bundle, self._transact(bundle), "Appointment"))
+        return self._booking(action)
+
+    def _active_booking(self, appointment_id):
+        """The Appointment, its Slot and Tasks as stored, or None if it is no longer active."""
+        appointment = self._read("Appointment", appointment_id)
+        if appointment.get("status") not in ACTIVE_APPOINTMENT_STATUSES:
+            return None
+        slot = self._read("Slot", appointment["slot"][0]["reference"].split("/", 1)[1])
+        task, group_task = self._tasks_for(appointment["basedOn"][0]["reference"])
+        return appointment, slot, task, group_task
+
+    def cancel(self, appointment_id, *, reason):
+        """Referrer cancels a proposed or booked Appointment and frees its Slot."""
+        def action():
+            booking = self._active_booking(appointment_id)
+            if booking is None:
+                return BookingResult(ok=False, conflict=True)
+            self._transact(build_cancel_transaction(*booking, reason=reason))
+            return BookingResult(ok=True, appointment_id=appointment_id)
+        return self._booking(action)
+
+    def reschedule(self, appointment_id, new_slot_id, *, claim_profiles=True):
+        """Cancel the Appointment and propose a new Slot for the same request, atomically."""
+        def action():
+            booking = self._active_booking(appointment_id)
+            new_slot = self._read("Slot", new_slot_id)
+            if booking is None or new_slot.get("status") != "free":
+                return BookingResult(ok=False, conflict=True)
+            service_request = self._read(
+                "ServiceRequest", booking[0]["basedOn"][0]["reference"].split("/", 1)[1])
+            schedule = self._read("Schedule", new_slot["schedule"]["reference"].split("/", 1)[1])
+            bundle = build_reschedule_transaction(*booking, service_request, new_slot, schedule,
+                                                  claim_profiles=claim_profiles)
+            return BookingResult(ok=True, appointment_id=_created_id(
+                bundle, self._transact(bundle), "Appointment"))
         return self._booking(action)
 
     def locations_for_organization(self, organization_id):

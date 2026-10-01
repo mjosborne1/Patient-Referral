@@ -113,9 +113,7 @@ def propose(service_request_id):
                                    notice="This slot was just taken — please choose another.")
     if not result.ok:
         return render_template("partials/operation_outcome.html", outcome=result.operation_outcome)
-    response = make_response(render_template("partials/booking_proposed.html"))
-    response.headers["HX-Trigger"] = "booking-changed"
-    return response
+    return _booking_changed("partials/booking_proposed.html")
 
 
 # ── Filler: pending bookings ─────────────────────────────────────────────────
@@ -199,3 +197,40 @@ def filler_book(service_request_id):
         return _filler_slot_picker(service_request_id,
                                    notice="This slot was just taken — please choose another.")
     return _booking_outcome(result, "Booked")
+
+
+# ── Placer: cancel and reschedule ────────────────────────────────────────────
+
+@booking_bp.route("/booking/appointment/<appointment_id>/cancel", methods=["POST"])
+@login_required
+def placer_cancel(appointment_id):
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        return render_template("partials/booking_action_result.html", ok=False,
+                               message="A reason is required to cancel.")
+    return _booking_outcome(_client().cancel(appointment_id, reason=reason), "Cancelled")
+
+
+def _reschedule_picker(service_request_id, appointment_id, notice=None):
+    return _render_slot_picker(
+        service_request_id, notice,
+        action_url=f"/booking/sr/{service_request_id}/reschedule/{appointment_id}")
+
+
+@booking_bp.route("/booking/sr/<service_request_id>/reschedule/<appointment_id>/slots")
+@login_required
+def placer_reschedule_slots(service_request_id, appointment_id):
+    return _reschedule_picker(service_request_id, appointment_id)
+
+
+@booking_bp.route("/booking/sr/<service_request_id>/reschedule/<appointment_id>", methods=["POST"])
+@login_required
+def placer_reschedule(service_request_id, appointment_id):
+    result = _client().reschedule(appointment_id, request.form["slot_id"],
+                                  claim_profiles=_env_flag("CLAIM_BOOKING_PROFILES"))
+    if result.conflict:
+        return _reschedule_picker(service_request_id, appointment_id,
+                                  notice="This slot was just taken — please choose another.")
+    if not result.ok:
+        return render_template("partials/operation_outcome.html", outcome=result.operation_outcome)
+    return _booking_changed("partials/booking_proposed.html")

@@ -36,7 +36,20 @@
         {% endif %}
       </td>
       <td class="text-end">
-        {% if row.bookable %}
+        {% if row.state in ('proposed', 'booked') %}
+        <div class="d-flex flex-column align-items-end gap-1" id="bookingAction-{{ row.appointment.id }}">
+          <button class="btn btn-sm btn-outline-primary"
+                  hx-get="/booking/sr/{{ sr.id }}/reschedule/{{ row.appointment.id }}/slots"
+                  hx-target="#bookingModalBody" data-bs-toggle="modal" data-bs-target="#bookingModal">
+            <i class="fas fa-exchange-alt me-1"></i>Reschedule
+          </button>
+          <form class="d-flex gap-1" hx-post="/booking/appointment/{{ row.appointment.id }}/cancel"
+                hx-target="#bookingAction-{{ row.appointment.id }}" hx-disabled-elt="find button">
+            <input type="text" name="reason" class="form-control form-control-sm" placeholder="Cancel reason" required style="max-width: 12rem;">
+            <button type="submit" class="btn btn-sm btn-outline-danger text-nowrap"><i class="fas fa-times me-1"></i>Cancel</button>
+          </form>
+        </div>
+        {% elif row.bookable %}
         <button class="btn btn-sm btn-primary"
                 hx-get="/booking/sr/{{ sr.id }}/slots" hx-target="#bookingModalBody"
                 data-bs-toggle="modal" data-bs-target="#bookingModal">
