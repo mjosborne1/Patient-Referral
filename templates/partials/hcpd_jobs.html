@@ -1,0 +1,63 @@
+{# HCPD export jobs; polls itself while a job is active. #}
+{% set badges = {
+  'submitted': 'secondary', 'polling': 'info', 'downloading': 'info', 'importing': 'primary',
+  'cancelling': 'warning text-dark', 'complete': 'success', 'complete-with-errors': 'warning text-dark',
+  'failed': 'danger', 'cancelled': 'secondary'} %}
+<div id="hcpdJobs" hx-get="/directory/import/jobs" hx-swap="outerHTML"
+     hx-trigger="{{ 'every 5s' if active and active.id not in interrupted else 'hcpd-jobs-changed from:body' }}">
+{% if not jobs %}
+  <p class="text-muted mb-0">No exports yet.</p>
+{% else %}
+  <ul class="list-group list-group-flush">
+  {% for job in jobs %}
+    {% set types = job.parameters.parameter | selectattr('name', 'equalto', '_type') | map(attribute='valueString') | join(',') %}
+    <li class="list-group-item px-0">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <span class="badge bg-{{ badges.get(job.status, 'secondary') }}">{{ job.status }}</span>
+          {% if job.id in interrupted %}<span class="badge bg-warning text-dark">interrupted</span>{% endif %}
+          <span class="badge bg-light text-dark">{{ job.mode }}</span>
+          <small class="text-muted ms-1">{{ job.created[:16] | replace('T', ' ') }} UTC · {{ types }}</small>
+          {% if job.progress %}<div class="small mt-1"><i class="fas fa-spinner fa-spin me-1"></i>{{ job.progress }}</div>{% endif %}
+          {% if job.message %}<div class="small text-muted mt-1">{{ job.message }}</div>{% endif %}
+          {% if job.error %}<div class="small text-danger mt-1">{{ job.error }}</div>{% endif %}
+        </div>
+        <div class="d-flex gap-1">
+          {% if job.id in interrupted %}
+          <button class="btn btn-sm btn-outline-primary" hx-post="/directory/import/jobs/{{ job.id }}/resume"
+                  hx-target="#importResult"><i class="fas fa-play me-1"></i>Resume</button>
+          {% endif %}
+          {% if job.status in ('submitted', 'polling') %}
+          <button class="btn btn-sm btn-outline-danger" hx-post="/directory/import/jobs/{{ job.id }}/cancel"
+                  hx-target="#importResult"><i class="fas fa-stop me-1"></i>Cancel</button>
+          {% endif %}
+          {% if not active and job.status in ('complete', 'complete-with-errors') and job.id in has_sync_point %}
+          <button class="btn btn-sm btn-outline-success" hx-post="/directory/import/jobs/{{ job.id }}/incremental"
+                  hx-target="#importResult"><i class="fas fa-sync-alt me-1"></i>Run incremental</button>
+          {% endif %}
+        </div>
+      </div>
+      {% if job.counts.by_type %}
+      <table class="table table-sm small mb-1 mt-2">
+        <thead><tr><th>Type</th><th>Upserted</th><th>Removed</th><th>Failed</th></tr></thead>
+        <tbody>
+        {% for type, c in job.counts.by_type.items() %}
+          <tr><td>{{ type }}</td><td>{{ c.upserted }}</td><td>{{ c.removed }}</td>
+              <td class="{{ 'text-danger fw-semibold' if c.failed else '' }}">{{ c.failed }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      {% if job.counts.errors %}
+      <details class="small"><summary class="text-danger">{{ job.counts.errors | length }} error(s)</summary>
+        <ul class="mb-0">{% for e in job.counts.errors %}<li><code>{{ e }}</code></li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+      {% if job.status == 'complete-with-errors' %}
+      <div class="small text-muted">Sync point not advanced: the next incremental export repeats this window.</div>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+{% endif %}
+</div>

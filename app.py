@@ -20,12 +20,14 @@ from fhir_parser import extract_resources
 from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
 from booking_routes import booking_bp
+from hcpd_routes import hcpd_bp
 
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Needed for Flask session management
 
 app.register_blueprint(booking_bp)
+app.register_blueprint(hcpd_bp)
 
 login_manager = LoginManager()
 login_manager.init_app(app)

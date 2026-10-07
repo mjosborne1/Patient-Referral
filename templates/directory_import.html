@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directory Import — HCPD Bulk Export</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
+</head>
+<body>
+    {% set active_page = 'directory_import' %}
+    {% include 'partials/sidebar.html' %}
+
+    <main class="main-content">
+    <div class="container-fluid mt-4">
+        <h2 class="text-primary mb-1"><i class="fas fa-cloud-download-alt me-2"></i>Directory Import</h2>
+        <p class="text-muted">Bulk export providers from the Health Connect Provider Directory
+            (<code>{{ hcpd_base }}</code>) into the configured referral FHIR server.</p>
+
+        {% if auth_mode == 'none' %}
+        <div class="alert alert-warning">
+            <i class="fas fa-key me-1"></i>HCPD <code>$export</code> needs a Bearer token with <em>export</em> scope.
+            For SIT, put the connectathon JWT (e.g. <code>SIT-export.txt</code>) in
+            <code>HCPD_BEARER_TOKEN_FILE</code> or <code>HCPD_BEARER_TOKEN</code>; in production set
+            <code>HCPD_TOKEN_ENDPOINT</code>, <code>HCPD_CLIENT_ID</code> and <code>HCPD_CLIENT_SECRET</code>.
+        </div>
+        {% elif token_expired %}
+        <div class="alert alert-danger">
+            <i class="fas fa-clock me-1"></i>The configured HCPD token expired on
+            <strong>{{ token_expires.strftime('%Y-%m-%d') }}</strong>; exports will be rejected until it is replaced.
+        </div>
+        {% elif auth_mode == 'static' %}
+        <p class="small text-muted"><i class="fas fa-key me-1"></i>Using a static HCPD token{% if token_expires %},
+            valid until {{ token_expires.strftime('%Y-%m-%d') }}{% endif %}.</p>
+        {% endif %}
+
+        <div class="row">
+            <div class="col-lg-5">
+                <div class="card">
+                    <div class="card-header fw-semibold"><i class="fas fa-filter me-1"></i>New standard export</div>
+                    <div class="card-body">
+                        <form hx-post="/directory/import" hx-target="#importResult" hx-disabled-elt="find button">
+                            <label class="form-label">Resource types</label>
+                            <div class="mb-2">
+                                {% for t in types %}
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" name="types" id="type-{{ t }}"
+                                           value="{{ t }}" {{ 'checked' if t in ('Organization', 'Location', 'HealthcareService') }}>
+                                    <label class="form-check-label" for="type-{{ t }}">{{ t }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="mb-2">
+                                <label for="preset" class="form-label">Scope</label>
+                                <select id="preset" name="preset" class="form-select" onchange="hcpdPresetChanged(this)">
+                                    {% for value, label, example in presets %}
+                                    <option value="{{ value }}" data-example="{{ example }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-2" id="presetValue">
+                                <label for="value" class="form-label">Value</label>
+                                <input id="value" name="value" class="form-control" value="QLD">
+                            </div>
+                            <div class="mb-2 d-none" id="presetState">
+                                <label for="state" class="form-label">Narrow to state (optional)</label>
+                                <input id="state" name="state" class="form-control" placeholder="QLD">
+                            </div>
+                            <div class="mb-3 d-none" id="presetFilters">
+                                <label for="filters" class="form-label">_typeFilter lines (one per line, one or more per type)</label>
+                                <textarea id="filters" name="filters" class="form-control font-monospace" rows="5"
+                                          placeholder="Organization?address-state=QLD"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i>Start export</button>
+                        </form>
+                        <div id="importResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header fw-semibold"><i class="fas fa-tasks me-1"></i>Exports</div>
+                    <div class="card-body">
+                        <div hx-get="/directory/import/jobs" hx-trigger="load" hx-swap="outerHTML">
+                            <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </main>
+
+    <script>
+    function hcpdPresetChanged(select) {
+        var preset = select.value;
+        document.getElementById('presetValue').classList.toggle('d-none', preset === 'advanced');
+        document.getElementById('presetState').classList.toggle('d-none', preset !== 'service-type');
+        document.getElementById('presetFilters').classList.toggle('d-none', preset !== 'advanced');
+        document.getElementById('value').value = select.selectedOptions[0].dataset.example || '';
+    }
+
+    // Referral FHIR server URL and credentials from Settings, as on the other standalone pages.
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+        var url = localStorage.getItem('fhir_server_url');
+        if (url) evt.detail.headers['X-FHIR-Server-URL'] = url;
+        var authMode = localStorage.getItem('fhirAuthMode') || 'none';
+        if (authMode === 'basic') {
+            var u = localStorage.getItem('fhirUsername'), p = localStorage.getItem('fhirPassword');
+            if (u && p) { evt.detail.headers['X-FHIR-Username'] = u; evt.detail.headers['X-FHIR-Password'] = p; }
+        } else if (authMode === 'smart') {
+            var token = localStorage.getItem('smart_access_token');
+            if (token) evt.detail.headers['X-FHIR-Bearer-Token'] = token;
+        }
+        if (!localStorage.getItem('fhirAuthMode') && localStorage.getItem('useFhirAuth') === 'true') {
+            var lu = localStorage.getItem('fhirUsername'), lp = localStorage.getItem('fhirPassword');
+            if (lu && lp) { evt.detail.headers['X-FHIR-Username'] = lu; evt.detail.headers['X-FHIR-Password'] = lp; }
+        }
+    });
+    </script>
+</body>
+</html>
