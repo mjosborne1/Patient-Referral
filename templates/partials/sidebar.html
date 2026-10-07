@@ -1,5 +1,5 @@
 <!-- Shared Sidebar Navigation -->
-{% set is_standalone = active_page in ('airport', 'filler') %}
+{% set is_standalone = active_page in ('airport', 'filler', 'filler_imaging', 'directory_import') %}
 <nav class="sidebar">
     <div class="position-sticky">
         <div class="sidebar-logo py-3 px-2 mb-2 d-flex justify-content-center align-items-center">
@@ -19,6 +19,16 @@
             <li class="nav-item">
                 <a class="nav-link{% if active_page == 'filler' %} active{% endif %}" href="/filler">
                     <i class="fas fa-hospital-user me-1"></i><span>Referral Inbox</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link{% if active_page == 'filler_imaging' %} active{% endif %}" href="/filler/imaging">
+                    <i class="fas fa-calendar-check me-1"></i><span>Imaging Bookings</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link{% if active_page == 'directory_import' %} active{% endif %}" href="/directory/import">
+                    <i class="fas fa-cloud-download-alt me-1"></i><span>Directory Import</span>
                 </a>
             </li>
             <li class="nav-item">

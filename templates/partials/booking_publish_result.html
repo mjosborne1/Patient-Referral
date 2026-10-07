@@ -1,0 +1,9 @@
+{% if result.ok %}
+<div class="alert alert-success mb-0" role="status">
+  <i class="fas fa-check-circle me-1"></i>
+  Published {{ result.created_slots }} slot{{ '' if result.created_slots == 1 else 's' }}
+  {% if result.skipped_slots %}({{ result.skipped_slots }} already published){% endif %}.
+</div>
+{% else %}
+{% with outcome = result.operation_outcome %}{% include 'partials/operation_outcome.html' %}{% endwith %}
+{% endif %}

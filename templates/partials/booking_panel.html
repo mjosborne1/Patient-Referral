@@ -1,0 +1,65 @@
+{# Placer: imaging requests for a patient with triage and booking state. #}
+{% set state_badges = {
+  'awaiting-triage': ('secondary', 'Awaiting triage'),
+  'rejected': ('danger', 'Rejected by provider'),
+  'bookable': ('primary', 'Ready to book'),
+  'proposed': ('warning text-dark', 'Proposed – awaiting confirmation'),
+  'booked': ('success', 'Booked'),
+  'declined': ('danger', 'Booking declined'),
+  'cancelled': ('secondary', 'Appointment cancelled'),
+  'closed': ('light text-dark', 'Closed'),
+} %}
+{% if not rows %}
+<p class="text-muted mb-0">No imaging requests for this patient.</p>
+{% else %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-0">
+  <thead><tr><th>Request</th><th>Authored</th><th>Task</th><th>Booking</th><th></th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+    {% set sr = row.service_request %}
+    {% set badge = state_badges[row.state] %}
+    <tr>
+      <td>{{ sr.code.text or (sr.code.coding[0].display if sr.code.coding) or 'Imaging request' }}</td>
+      <td><small>{{ (sr.authoredOn or '')[:10] }}</small></td>
+      <td><small>{{ row.task.status if row.task else '—' }}{% if row.task and row.task.businessStatus %} / {{ row.task.businessStatus.coding[0].code if row.task.businessStatus.coding else row.task.businessStatus.text }}{% endif %}</small></td>
+      <td>
+        <span class="badge bg-{{ badge[0] }}">{{ badge[1] }}</span>
+        {% if row.appointment and row.state in ('proposed', 'booked', 'declined', 'cancelled') %}
+          <small class="ms-1">{{ row.appointment.start | booking_day }} {{ row.appointment.start | booking_time }}</small>
+        {% endif %}
+        {% if row.state in ('declined', 'cancelled') and row.appointment.cancelationReason %}
+          <br><small class="text-muted">{{ row.appointment.cancelationReason.text or row.appointment.cancelationReason.coding[0].display }}</small>
+        {% endif %}
+        {% if row.state == 'booked' and row.appointment.patientInstruction %}
+          <br><small class="text-muted"><i class="fas fa-info-circle me-1"></i>{{ row.appointment.patientInstruction }}</small>
+        {% endif %}
+      </td>
+      <td class="text-end">
+        {% if row.state in ('proposed', 'booked') %}
+        <div class="d-flex flex-column align-items-end gap-1" id="bookingAction-{{ row.appointment.id }}">
+          <button class="btn btn-sm btn-outline-primary"
+                  hx-get="/booking/sr/{{ sr.id }}/reschedule/{{ row.appointment.id }}/slots"
+                  hx-target="#bookingModalBody" data-bs-toggle="modal" data-bs-target="#bookingModal">
+            <i class="fas fa-exchange-alt me-1"></i>Reschedule
+          </button>
+          <form class="d-flex gap-1" hx-post="/booking/appointment/{{ row.appointment.id }}/cancel"
+                hx-target="#bookingAction-{{ row.appointment.id }}" hx-disabled-elt="find button">
+            <input type="text" name="reason" class="form-control form-control-sm" placeholder="Cancel reason" required style="max-width: 12rem;">
+            <button type="submit" class="btn btn-sm btn-outline-danger text-nowrap"><i class="fas fa-times me-1"></i>Cancel</button>
+          </form>
+        </div>
+        {% elif row.bookable %}
+        <button class="btn btn-sm btn-primary"
+                hx-get="/booking/sr/{{ sr.id }}/slots" hx-target="#bookingModalBody"
+                data-bs-toggle="modal" data-bs-target="#bookingModal">
+          <i class="fas fa-calendar-plus me-1"></i>Book slot
+        </button>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}

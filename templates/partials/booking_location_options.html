@@ -1,0 +1,3 @@
+{% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name or loc.id }}</option>
+{% else %}<option value="" disabled selected>No Locations for this organisation</option>
+{% endfor %}

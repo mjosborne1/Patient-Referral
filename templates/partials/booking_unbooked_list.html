@@ -1,0 +1,24 @@
+{# Filler: accepted imaging requests with no active Appointment. #}
+{% if not rows %}
+<p class="text-muted mb-0">No accepted requests waiting to be booked.</p>
+{% else %}
+<ul class="list-group list-group-flush">
+{% for row in rows %}
+  {% set sr = row.service_request %}
+  {% set name = row.patient.name[0] if row.patient and row.patient.name else {} %}
+  <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+    <div>
+      <strong>{{ (name.given or []) | join(' ') }} {{ name.family or '' }}</strong>
+      <span class="text-muted">— {{ sr.code.text or (sr.code.coding[0].display if sr.code.coding) or 'Imaging request' }}</span>
+      {% if row.state == 'declined' %}<span class="badge bg-danger ms-1">Previously declined</span>{% endif %}
+      {% if row.state == 'cancelled' %}<span class="badge bg-secondary ms-1">Previously cancelled</span>{% endif %}
+    </div>
+    <button class="btn btn-sm btn-primary text-nowrap"
+            hx-get="/filler/imaging/sr/{{ sr.id }}/slots" hx-target="#fillerBookingModalBody"
+            data-bs-toggle="modal" data-bs-target="#fillerBookingModal">
+      <i class="fas fa-calendar-plus me-1"></i>Book directly
+    </button>
+  </li>
+{% endfor %}
+</ul>
+{% endif %}

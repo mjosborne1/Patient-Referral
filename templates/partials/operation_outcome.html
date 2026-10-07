@@ -1,0 +1,14 @@
+{# Renders a FHIR OperationOutcome passed as `outcome`. #}
+<div class="alert alert-danger mb-0" role="alert">
+  <strong><i class="fas fa-exclamation-triangle me-1"></i>The FHIR server rejected the request</strong>
+  <ul class="mb-0 mt-2">
+    {% for issue in outcome.get('issue', []) %}
+    <li>
+      <span class="badge bg-{{ 'danger' if issue.severity in ('error', 'fatal') else 'warning text-dark' }}">{{ issue.severity }}</span>
+      <code>{{ issue.code }}</code>
+      {{ issue.diagnostics or (issue.details.text if issue.details) or '' }}
+      {% if issue.expression %}<small class="text-muted">({{ issue.expression | join(', ') }})</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
