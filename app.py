@@ -21,6 +21,7 @@ from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
 from booking_routes import booking_bp
 from hcpd_routes import hcpd_bp
+from version import __version__
 
 
 app = Flask(__name__)
@@ -28,6 +29,20 @@ app.secret_key = os.urandom(24) # Needed for Flask session management
 
 app.register_blueprint(booking_bp)
 app.register_blueprint(hcpd_bp)
+
+RELEASES_URL = "https://github.com/mjosborne1/Patient-Referral/releases"
+
+
+@app.context_processor
+def inject_version():
+    return {"app_version": __version__, "app_release_url": f"{RELEASES_URL}/tag/v{__version__}"}
+
+
+@app.route('/version')
+def version():
+    """Running version and commit (GIT_SHA from the Docker build, or Render's RENDER_GIT_COMMIT)."""
+    commit = os.environ.get('GIT_SHA') or os.environ.get('RENDER_GIT_COMMIT') or 'unknown'
+    return jsonify({"version": __version__, "commit": commit})
 
 login_manager = LoginManager()
 login_manager.init_app(app)

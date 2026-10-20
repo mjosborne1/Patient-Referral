@@ -20,6 +20,14 @@ RUN pip install --no-cache-dir pipenv && \
 # Copy application code
 COPY . .
 
+# Version metadata from the build (see .github/workflows/docker-build.yml); GIT_SHA is
+# reported by GET /version.
+ARG APP_VERSION=unknown
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+LABEL org.opencontainers.image.version=${APP_VERSION} \
+      org.opencontainers.image.revision=${GIT_SHA}
+
 # Expose port for Flask application
 EXPOSE 5000
 

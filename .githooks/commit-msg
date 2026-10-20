@@ -1,0 +1,22 @@
+#!/bin/sh
+# Enforce Conventional Commit messages (see CONTRIBUTING.md).
+# Enable once per clone:  git config core.hooksPath .githooks
+first_line=$(head -n 1 "$1")
+
+# Let git's own generated messages through.
+case "$first_line" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *) exit 0 ;;
+esac
+
+types='feat|fix|perf|docs|test|refactor|chore|ci|build|style'
+scopes='referral|diagnostic|booking|filler|hcpd|pd|smart|ui|deps|release'
+pattern="^($types)(\(($scopes)\))?!?: .+"
+
+if ! printf '%s\n' "$first_line" | grep -Eq "$pattern"; then
+  echo "commit-msg: \"$first_line\" is not a Conventional Commit." >&2
+  echo "  Expected: <type>(<scope>)!: <summary>" >&2
+  echo "  Types:  ${types}" | tr '|' ' ' >&2
+  echo "  Scopes: ${scopes}" | tr '|' ' ' >&2
+  echo "  See CONTRIBUTING.md. Bypass once with --no-verify." >&2
+  exit 1
+fi

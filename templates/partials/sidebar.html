@@ -81,6 +81,11 @@
                 </a>
             </li>
         </ul>
-
+        {% if app_version %}
+        <div class="px-3 pt-2 small">
+            <a class="text-decoration-none text-secondary" href="{{ app_release_url }}" target="_blank"
+               title="Release notes for v{{ app_version }}">v{{ app_version }}</a>
+        </div>
+        {% endif %}
     </div>
 </nav>
