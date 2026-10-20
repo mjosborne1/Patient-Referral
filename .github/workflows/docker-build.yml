@@ -1,12 +1,14 @@
 name: Build and Push Multi-Architecture Docker Image
 
+# Manual. Run it on a release tag (e.g. v1.3.0) to build that version; the image tag defaults
+# to the version in version.py at the chosen ref. Releases do not trigger this automatically.
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag (default: latest)'
+        description: 'Image tag (default: the version in version.py)'
         required: false
-        default: 'latest'
+        default: ''
       push_to_registry:
         description: 'Push to registry (true/false)'
         required: false
@@ -22,6 +24,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Resolve version and image tags
+        id: meta
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REGISTRY_USER: ${{ secrets.DOCKER_USERNAME }}
+        run: |
+          version=$(python3 -c "import version; print(version.__version__)")
+          tag=${INPUT_TAG:-$version}
+          ns=${REGISTRY_USER:-local}
+          # patient-dashboard is the pre-rename image name, kept for the 1.0.x line so existing
+          # deployments keep pulling; drop it in a later release.
+          {
+            echo "version=$version"
+            echo "tags<<EOF"
+            for image in patient-referral patient-dashboard; do
+              echo "$ns/$image:$tag"
+              echo "$ns/$image:latest"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -42,6 +65,12 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event.inputs.push_to_registry == 'true' }}
-          tags: |
-            patient-dashboard:${{ github.event.inputs.tag }}
-            patient-dashboard:latest
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=patient-referral
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: ${{ steps.meta.outputs.tags }}

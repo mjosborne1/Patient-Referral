@@ -3,9 +3,11 @@ import os
 
 import requests
 
+from version import __version__
+
 _GEOSCAPE_BASE = "https://api.psma.com.au"
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-_NOMINATIM_UA  = "PatientReferralApp/1.0 (research prototype)"
+_NOMINATIM_UA  = f"PatientReferralApp/{__version__} (research prototype)"
 
 
 def _geoscape(query: str, key: str):

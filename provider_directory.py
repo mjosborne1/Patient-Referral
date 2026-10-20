@@ -8,10 +8,14 @@ import uuid
 import requests
 
 from geoscape import geocode
+from version import __version__
 
 _PD_DEFAULT = "https://sit.healthconnect.digitalhealth.gov.au/adha/hcd-api-router/api/v1/fhir"
 
 _NEAR_RADIUS_KM = 20
+
+# Azure Application Gateway blocks the default python-requests User-Agent
+USER_AGENT = f"Mozilla/5.0 (compatible; PatientReferralApp/{__version__})"
 
 
 def pd_server():
@@ -56,8 +60,7 @@ def _fhir_get(url, params):
     headers = {
         "Accept": "application/fhir+json",
         "X-Request-ID": request_id,
-        # Azure Application Gateway blocks the default python-requests User-Agent
-        "User-Agent": "Mozilla/5.0 (compatible; PatientReferralApp/1.0)",
+        "User-Agent": USER_AGENT,
     }
     try:
         resp = requests.get(url, params=params, headers=headers, timeout=10)

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import requests
 
+from version import __version__
+
 EXPORT_PARAMETERS_PROFILE = (
     "http://digitalhealth.gov.au/fhir/hcpd/StructureDefinition/hcpd-export-request-parameters")
 NDJSON = "application/fhir+ndjson"
@@ -313,7 +315,7 @@ class HcpdExportClient:
     """HCPD Bulk Data $export: kickoff, status polling, output download and cancellation."""
 
     # Azure Application Gateway in front of HCPD blocks the default python-requests User-Agent.
-    USER_AGENT = "Mozilla/5.0 (compatible; PatientReferralApp/1.0)"
+    USER_AGENT = f"Mozilla/5.0 (compatible; PatientReferralApp/{__version__})"
 
     def __init__(self, base_url, token=lambda: None, timeout=60):
         self.base_url = base_url.rstrip("/")
