@@ -3242,6 +3242,22 @@ def debug_tasks():
         return jsonify({"error": str(e)}), 500
 
 
+HPIO_SCOPED_ORDER_NAMESPACE = 'http://ns.electronichealth.net.au/id/hpio-scoped/order/'
+
+
+def placer_order_number_of(service_request):
+    """Placer Order Number: the PLAC-typed identifier (AU eRequesting), else an identifier in the
+    HPI-O-scoped order namespace (e.g. Radiology Referral IG requests, which leave type unset)."""
+    identifiers = service_request.get('identifier', [])
+    for identifier in identifiers:
+        if any(c.get('code') == 'PLAC' for c in identifier.get('type', {}).get('coding', [])):
+            return identifier.get('value', '')
+    for identifier in identifiers:
+        if identifier.get('system', '').startswith(HPIO_SCOPED_ORDER_NAMESPACE):
+            return identifier.get('value', '')
+    return ''
+
+
 @app.route('/api/tasks/by-org', methods=['GET'])
 @login_required
 def get_tasks_by_org():
@@ -3293,7 +3309,9 @@ def get_tasks_by_org():
         params_with_includes = params_list + [
             ('_include', 'Task:focus'),
             ('_include', 'Task:patient'),
-            ('_revinclude', 'Task:part-of')  # Include child tasks that reference these group tasks
+            ('_revinclude', 'Task:part-of'),  # Include child tasks that reference these group tasks
+            # Child tasks arrive via _revinclude, so their ServiceRequests need an iterating include.
+            ('_include:iterate', 'Task:focus'),
         ]
         
         if limit:
@@ -3353,6 +3371,28 @@ def get_tasks_by_org():
                     child_task_map[parent_task_id].append(resource)
         
         logging.info(f"Found {len(child_task_map)} group tasks with children: {list(child_task_map.keys())[:5]}")
+
+        # Servers that ignore _include:iterate omit the child tasks' ServiceRequests; fetch any
+        # still missing in one search so the child rows can show test and placer order number.
+        missing_sr_ids = sorted({
+            ref.split('/')[-1]
+            for children in child_task_map.values() for child in children
+            for ref in [child.get('focus', {}).get('reference', '')]
+            if ref.startswith('ServiceRequest/') and ref.split('/')[-1] not in sr_map
+        })
+        if missing_sr_ids:
+            try:
+                sr_resp = requests.get(f"{fhir_server_url}/ServiceRequest",
+                                       params={'_id': ','.join(missing_sr_ids)}, auth=auth, timeout=10)
+                if sr_resp.status_code == 200:
+                    for sr_entry in sr_resp.json().get('entry', []):
+                        sr_res = sr_entry.get('resource', {})
+                        if sr_res.get('resourceType') == 'ServiceRequest':
+                            sr_map[sr_res.get('id', '')] = sr_res
+                else:
+                    logging.warning(f"Fetching child ServiceRequests failed: {sr_resp.status_code}")
+            except requests.RequestException as e:
+                logging.warning(f"Failed to fetch child ServiceRequests {missing_sr_ids}: {e}")
         
         # Third pass: process tasks with full context
         for entry in entries:
@@ -3624,15 +3664,7 @@ def get_tasks_by_org():
                                 display_sequence = ext.get('valueInteger')
                                 break
                         
-                        # Extract Placer Order Number from identifier with type PLAC
-                        for identifier in child_sr.get('identifier', []):
-                            type_codings = identifier.get('type', {}).get('coding', [])
-                            for coding in type_codings:
-                                if coding.get('code') == 'PLAC':
-                                    placer_order_number = identifier.get('value', '')
-                                    break
-                            if placer_order_number:
-                                break
+                        placer_order_number = placer_order_number_of(child_sr)
                     
                     # Extract authoredOn from ServiceRequest
                     authored_on = child_sr.get('authoredOn', '') if child_sr else ''
