@@ -6,6 +6,15 @@ squash-merged pull request titles on `main`. See [CONTRIBUTING.md](CONTRIBUTING.
 
 <!-- version list -->
 
+## v1.0.1 (2026-10-21)
+
+### Bug Fixes
+
+- **filler**: Show ServiceRequest details for child tasks on the airport board
+  ([#3](https://github.com/mjosborne1/Patient-Referral/pull/3),
+  [`b4cca20`](https://github.com/mjosborne1/Patient-Referral/commit/b4cca20b6e636f8a0f4ecc0b56f739c8f431f592))
+
+
 ## v1.0.0 (2026-10-20)
 
 This is the baseline release, written by hand; earlier history wasn't in Conventional Commit
