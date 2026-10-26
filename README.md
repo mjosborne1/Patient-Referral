@@ -112,17 +112,32 @@ Configure reusable groups of diagnostic tests to streamline ordering workflows. 
 
 ```json
 {
-  "order_sets": {
-    "Male over 50": [
-      {"code": "14743-9", "text": "Prostate specific Ag [Mass/volume] in Serum or Plasma"},
-      {"code": "2093-3", "text": "Cholesterol [Mass/volume] in Serum or Plasma"},
-      {"code": "2339-0", "text": "Glucose [Mass/volume] in Blood"}
-    ],
-    "Diabetes monitoring": [
-      {"code": "4548-4", "text": "Hemoglobin A1c/Hemoglobin.total in Blood"},
-      {"code": "2339-0", "text": "Glucose [Mass/volume] in Blood"}
-    ]
-  }
+    "order_sets": {
+         "? MI": [
+            {
+                "code": "105000003",
+                "text": "Troponin",
+                "display": "Troponin measurement"
+            }
+        ],
+        "Diabetes monitoring": [
+            {
+                "code": "43396009",
+                "text": "HbA1c",
+                "display": "Haemoglobin A1c measurement"
+            },
+            {
+                "code": "271075006",
+                "text": "UACR",
+                "display": "Urine albumin/creatinine ratio measurement"
+            },            
+            {
+                "code": "252150008",
+                "text": "Fasting Lipids",
+                "display": "Fasting lipid profile"
+            }
+        ]
+    }
 }
 ```
 
