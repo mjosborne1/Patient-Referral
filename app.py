@@ -1367,6 +1367,14 @@ def get_copy_to_practitioners():
     return render_template('partials/copy_to_practitioners.html', practitioners=all_practitioners)
 
 
+# Different FHIR servers categorise Pathology/Radiology providers under different,
+# but clinically-equivalent, SNOMED codes (e.g. the connectathon server tags its
+# pathology org as "Pathology department" 309950003 rather than "Pathology service"
+# 310074003).
+PATHOLOGY_TYPE_CODES = ['310074003', '309950003']  # Pathology service / Pathology department
+RADIOLOGY_TYPE_CODES = ['708175003', '284546000', '722174002', '722171005']  # Radiology/imaging variants
+
+
 @app.route('/fhir/Provider/<org_type>')
 @login_required
 def get_organisation_by_type(org_type):
@@ -1386,12 +1394,7 @@ def get_organisation_by_type(org_type):
     """
     logging.info(f"get_organisation_by_type called with org_type={org_type}")
 
-    # Different FHIR servers categorise Pathology/Radiology providers under different,
-    # but clinically-equivalent, SNOMED codes (e.g. the connectathon server tags its
-    # pathology org as "Pathology department" 309950003 rather than "Pathology service"
-    # 310074003). Search all known synonyms together via a comma-separated OR.
-    PATHOLOGY_TYPE_CODES = ['310074003', '309950003']  # Pathology service / Pathology department
-    RADIOLOGY_TYPE_CODES = ['708175003', '284546000', '722174002', '722171005']  # Radiology/imaging variants
+    # Search all known synonym type codes together via a comma-separated OR.
     if org_type in PATHOLOGY_TYPE_CODES:
         search_codes = PATHOLOGY_TYPE_CODES
     elif org_type in RADIOLOGY_TYPE_CODES:
@@ -3135,19 +3138,31 @@ def get_organisations_with_tasks():
         # No status filter - show all tasks
         params_list = [
             ('_tag', 'http://terminology.hl7.org.au/CodeSystem/resource-tag|fulfilment-task-group'),
-            ('_include', 'Task:owner')
+            ('_include', 'Task:owner'),
+            ('_count', '200')
         ]
-        
+
         logging.info("Fetching organisations with group tasks")
         resp = requests.get(task_url, params=params_list, auth=auth, timeout=10)
-        
+
         if resp.status_code != 200:
             logging.warning(f"Failed to fetch group tasks: {resp.status_code}")
             logging.warning(f"Response: {resp.text[:500]}")
             return jsonify([]), 200
-        
-        data = resp.json()
-        entries = data.get('entry', [])
+
+        # Servers may cap _count, so follow 'next' links; owners can appear on any page
+        entries = []
+        max_pages = 20
+        for _ in range(max_pages):
+            data = resp.json()
+            entries.extend(data.get('entry', []))
+            next_url = next((l.get('url') for l in data.get('link', []) if l.get('relation') == 'next'), None)
+            if not next_url:
+                break
+            resp = requests.get(next_url, auth=auth, timeout=10)
+            if resp.status_code != 200:
+                logging.warning(f"Failed to fetch next page of group tasks: {resp.status_code}")
+                break
         
         # Extract unique organisations
         org_map = {}
@@ -3162,14 +3177,15 @@ def get_organisations_with_tasks():
                 org_type_display = ''
                 for type_obj in resource.get('type', []):
                     for coding in type_obj.get('coding', []):
-                        code = coding.get('code', '').lower()
+                        code = coding.get('code', '')
                         display = coding.get('display', '')
-                        # Check for pathology or radiology indicators
-                        if 'path' in code or 'laboratory' in code or 'lab' in code:
+                        # Type codes are SNOMED (numeric); fall back to display text for other systems
+                        display_lower = display.lower()
+                        if code in PATHOLOGY_TYPE_CODES or 'patholog' in display_lower or 'laboratory' in display_lower:
                             org_type = 'pathology'
                             org_type_display = display or 'Pathology'
                             break
-                        elif 'radio' in code or 'imaging' in code or 'diagnostic' in code:
+                        elif code in RADIOLOGY_TYPE_CODES or 'radiolog' in display_lower or 'imaging' in display_lower:
                             org_type = 'radiology'
                             org_type_display = display or 'Radiology'
                             break
