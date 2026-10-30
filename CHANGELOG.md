@@ -6,6 +6,20 @@ squash-merged pull request titles on `main`. See [CONTRIBUTING.md](CONTRIBUTING.
 
 <!-- version list -->
 
+## v1.0.2 (2026-10-30)
+
+### Bug Fixes
+
+- **airport**: Show pathology organisations on the airport board
+  ([#4](https://github.com/mjosborne1/Patient-Referral/pull/4),
+  [`9544394`](https://github.com/mjosborne1/Patient-Referral/commit/9544394d5fda449564a8523ab2749219e345c5fe))
+
+### Documentation
+
+- Update order set example to SNOMED CT codes
+  ([`e18c4ac`](https://github.com/mjosborne1/Patient-Referral/commit/e18c4aceae02278c560aeb08fc65d6435e820c9c))
+
+
 ## v1.0.1 (2026-10-21)
 
 ### Bug Fixes
