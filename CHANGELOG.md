@@ -6,6 +6,14 @@ squash-merged pull request titles on `main`. See [CONTRIBUTING.md](CONTRIBUTING.
 
 <!-- version list -->
 
+## v1.1.0 (2026-11-16)
+
+### Features
+
+- **ui**: Show the AU Patient Summary as sections on the patient page
+  ([`723e6ac`](https://github.com/mjosborne1/Patient-Referral/commit/723e6ac499cc0b3763cca771283cf3d17b8823c2))
+
+
 ## v1.0.2 (2026-10-30)
 
 ### Bug Fixes
