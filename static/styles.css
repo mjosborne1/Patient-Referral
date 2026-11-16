@@ -45,6 +45,12 @@ body {
     background-color: var(--tropical-primary) !important;
 }
 
+/* Light headers must not inherit the white header text above */
+.card-header.bg-light,
+.card-header.bg-white {
+    color: var(--tropical-dark);
+}
+
 .card-body {
     padding: 1.5rem;
 }

@@ -1,0 +1,186 @@
+{# AU Patient Summary document view. Context: view (from aups_view.parse_summary), error, debug, source #}
+{% macro status_badge(status) -%}
+  {%- set s = (status or '')|lower -%}
+  {%- if s -%}
+  <span class="badge rounded-pill
+    {% if s in ('active', 'completed', 'final') %}bg-success
+    {% elif s in ('resolved', 'inactive', 'remission', 'stopped', 'not-taken') %}bg-secondary
+    {% elif s in ('entered-in-error', 'refuted', 'cancelled') %}bg-danger
+    {% elif s in ('on-hold', 'intended', 'recurrence', 'relapse') %}bg-warning text-dark
+    {% else %}bg-info text-dark{% endif %}">{{ status }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro render_section(sec) %}
+<div class="card mb-3 aups-section aups-accent-{{ sec.colour }} {% if sec.depth %}ms-3{% endif %}"
+     {% if sec.anchor %}id="{{ sec.anchor }}"{% endif %} data-section-code="{{ sec.code }}">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+    <div class="d-flex align-items-center gap-3">
+      <span class="aups-icon bg-{{ sec.colour }} bg-opacity-10 text-{{ sec.colour }}">
+        <i class="fas {{ sec.icon }}"></i>
+      </span>
+      <div>
+        <h6 class="mb-0 fw-bold aups-heading">{{ sec.heading }}</h6>
+        {% if sec.subtitle %}<div class="text-muted small">{{ sec.subtitle }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="text-end text-nowrap">
+      {% if sec.count %}<span class="badge rounded-pill bg-{{ sec.colour }}{% if sec.colour in ('warning', 'info') %} text-dark{% endif %}">{{ sec.count }}</span>{% endif %}
+      {% if sec.code %}<div class="text-muted" style="font-size: .7rem;" title="LOINC section code">LOINC {{ sec.code }}</div>{% endif %}
+    </div>
+  </div>
+  <div class="card-body {% if sec.groups %}p-0{% endif %}">
+    {% if sec.empty_reason %}
+    <div class="alert alert-secondary mb-2 {% if sec.groups %}m-2{% endif %}">
+      <i class="fas fa-circle-info me-2"></i><strong>No entries:</strong> {{ sec.empty_reason }}
+    </div>
+    {% endif %}
+
+    {% for statement in sec.no_known %}
+    <div class="alert alert-success py-2 mb-2 {% if sec.groups %}m-2{% endif %}">
+      <i class="fas fa-check-circle me-2"></i>{{ statement }}
+    </div>
+    {% endfor %}
+
+    {% for group in sec.groups %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>{% for col in group.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in group.rows %}
+          <tr>
+            {% for col in group.columns %}
+            <td {% if col in ('Date', 'Onset', 'Resolved', 'Recorded', 'Status') %}class="text-nowrap"{% endif %} {% if loop.first and row._level %}style="padding-left: {{ 0.5 + row._level * 1.25 }}rem;"{% endif %}>
+              {% if col == 'Status' %}
+                {{ status_badge(row[col]) }}
+              {% elif loop.first %}
+                {% if row._level %}<i class="fas fa-turn-up fa-rotate-90 text-muted me-1 small"></i>{% endif %}
+                <span class="{% if not row._level %}fw-semibold{% endif %}">{{ row[col] }}</span>
+              {% elif col == 'Criticality' and row[col] == 'high' %}
+                <span class="badge bg-danger">high</span>
+              {% elif col == 'Interpretation' and row[col] and row[col]|lower not in ('normal', 'n') %}
+                <span class="badge bg-warning text-dark">{{ row[col] }}</span>
+              {% else %}
+                {{ row[col] }}
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+
+    {% if sec.unresolved %}
+    <div class="alert alert-warning py-1 small {% if sec.groups %}m-2{% else %}mb-2{% endif %}">
+      <i class="fas fa-link-slash me-1"></i>{{ sec.unresolved|length }} entr{{ 'y' if sec.unresolved|length == 1 else 'ies' }} not found in the Bundle:
+      <code>{{ sec.unresolved|join(', ') }}</code>
+    </div>
+    {% endif %}
+
+    {% if sec.narrative_html %}
+      {% if sec.narrative_primary %}
+      <div class="aups-narrative">{{ sec.narrative_html|safe }}</div>
+      {% else %}
+      <details class="small {% if sec.groups %}px-3 py-2 border-top{% endif %}">
+        <summary class="text-muted">Section narrative</summary>
+        <div class="aups-narrative mt-2">{{ sec.narrative_html|safe }}</div>
+      </details>
+      {% endif %}
+    {% elif not sec.groups and not sec.no_known and not sec.empty_reason %}
+      <div class="text-muted small">This section has no entries.</div>
+    {% endif %}
+
+    {% for sub in sec.subsections %}{{ render_section(sub) }}{% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+<style>
+  .aups-narrative table { width: 100%; margin-bottom: .5rem; font-size: .875rem; }
+  .aups-narrative th, .aups-narrative td { border: 1px solid var(--bs-border-color, #dee2e6); padding: .25rem .5rem; vertical-align: top; }
+  .aups-narrative th { background: var(--bs-tertiary-bg, #f8f9fa); }
+  .aups-narrative p:last-child { margin-bottom: 0; }
+  .aups-section { border: 1px solid #dee2e6 !important; border-left: 5px solid var(--aups-accent) !important; }
+  .aups-accent-danger    { --aups-accent: var(--bs-danger); }
+  .aups-accent-primary   { --aups-accent: var(--bs-primary); }
+  .aups-accent-warning   { --aups-accent: var(--bs-warning); }
+  .aups-accent-success   { --aups-accent: var(--bs-success); }
+  .aups-accent-info      { --aups-accent: var(--bs-info); }
+  .aups-accent-secondary { --aups-accent: var(--bs-secondary); }
+  .aups-icon { display: inline-flex; align-items: center; justify-content: center;
+               width: 2.25rem; height: 2.25rem; border-radius: 50%; font-size: 1rem; flex-shrink: 0; }
+  .aups-heading { font-size: 1.05rem; color: var(--tropical-dark, #293241); }
+  /* The app styles every .card-header with white text and lifts cards on hover; neither suits these blocks */
+  .aups-section > .card-header { color: var(--tropical-dark, #293241); background-color: #fff; }
+  .aups-section > .card-header .text-muted { color: #5c6670 !important; }
+  .aups-section, .aups-section:hover { transform: none; }
+  .aups-nav a { text-decoration: none; }
+  /* Bootstrap's warning/info tints are too light as text on white; use their darker "emphasis" shades */
+  .aups-icon.text-warning, .aups-nav .btn-outline-warning:not(:hover) { color: var(--bs-warning-text-emphasis, #997404) !important; }
+  .aups-icon.text-info, .aups-nav .btn-outline-info:not(:hover) { color: var(--bs-info-text-emphasis, #087990) !important; }
+</style>
+
+{% if error %}
+<div class="alert alert-danger">
+  <i class="fas fa-triangle-exclamation me-2"></i><strong>Could not show the patient summary.</strong> {{ error }}
+  {% if debug %}<pre class="small mt-2 mb-0" style="white-space: pre-wrap;">{{ debug }}</pre>{% endif %}
+</div>
+{% else %}
+<div class="aups-view">
+  <div class="border rounded p-3 mb-3" style="background-color: var(--tropical-light, #f8f9fa);">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+      <div>
+        <h5 class="mb-1"><i class="fas fa-file-medical text-primary me-2"></i>{{ view.header.title }}</h5>
+        {% if view.patient %}
+        <div class="fw-semibold">
+          {{ view.patient.name }}
+          {% if view.patient.birth_date %}<span class="text-muted fw-normal">· DOB {{ view.patient.birth_date }}</span>{% endif %}
+          {% if view.patient.gender %}<span class="text-muted fw-normal">· {{ view.patient.gender|capitalize }}</span>{% endif %}
+        </div>
+        {% if view.patient.identifiers %}<div class="small text-muted">{{ view.patient.identifiers|join(' · ') }}</div>{% endif %}
+        {% endif %}
+      </div>
+      <div class="text-end small">
+        {% if view.header.status %}{{ status_badge(view.header.status) }}{% endif %}
+        <div class="text-muted">{{ source }}</div>
+      </div>
+    </div>
+    <dl class="row small mb-0 mt-2">
+      {% if view.header.date %}<dt class="col-sm-3">Summary date</dt><dd class="col-sm-9">{{ view.header.date }}</dd>{% endif %}
+      {% if view.header.authors %}<dt class="col-sm-3">Prepared by</dt><dd class="col-sm-9">{{ view.header.authors|join('; ') }}</dd>{% endif %}
+      {% if view.header.custodian %}<dt class="col-sm-3">Custodian</dt><dd class="col-sm-9">{{ view.header.custodian }}</dd>{% endif %}
+      {% if view.header.attesters %}<dt class="col-sm-3">Attested by</dt><dd class="col-sm-9">{{ view.header.attesters|join('; ') }}</dd>{% endif %}
+      {% if view.header.event_period %}<dt class="col-sm-3">Period covered</dt><dd class="col-sm-9">{{ view.header.event_period }}</dd>{% endif %}
+    </dl>
+  </div>
+
+  {% if view.warnings %}
+  <div class="alert alert-warning small">
+    <i class="fas fa-triangle-exclamation me-1"></i><strong>Document issues:</strong>
+    <ul class="mb-0">{% for w in view.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if view.sections|length > 1 %}
+  <nav class="aups-nav d-flex flex-wrap gap-2 mb-3" aria-label="Summary sections">
+    {% for sec in view.sections %}
+    <a href="#{{ sec.anchor }}" class="btn btn-sm btn-outline-{{ sec.colour }}"
+       onclick="document.getElementById('{{ sec.anchor }}').scrollIntoView({behavior: 'smooth', block: 'start'}); return false;">
+      <i class="fas {{ sec.icon }} me-1"></i>{{ sec.heading }}
+      {% if sec.count %}<span class="badge rounded-pill bg-{{ sec.colour }}{% if sec.colour in ('warning', 'info') %} text-dark{% endif %} ms-1">{{ sec.count }}</span>
+      {% elif sec.no_known %}<i class="fas fa-check ms-1"></i>
+      {% elif sec.empty_reason %}<span class="ms-1">–</span>{% endif %}
+    </a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% for sec in view.sections %}{{ render_section(sec) }}{% else %}
+  <div class="alert alert-info">The Composition has no sections.</div>
+  {% endfor %}
+</div>
+{% endif %}

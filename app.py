@@ -10,13 +10,14 @@ import hashlib
 import base64
 import secrets
 from urllib.parse import urlencode, urlparse
-from fhirutils import fhir_get as _original_fhir_get, format_fhir_date, get_text_display, find_category, get_form_data
+from fhirutils import fhir_get as _original_fhir_get, get_form_data
 from fhirutils import get_fhir_bearer_token, get_fhir_server_url, get_fhir_auth_credentials
 from bundler import create_request_bundle
 from referral_bundler import create_referral_bundle
 from provider_directory import search_providers, search_roles, search_practitioners_by_service, search_unified
 from codesearch import search_codes as cs_search
 from fhir_parser import extract_resources
+from aups_view import parse_summary
 from graph_builder import build_graph
 from mermaid_generator import generate_mermaid
 from booking_routes import booking_bp
@@ -929,128 +930,81 @@ def get_patient(patient_id):
         return jsonify({"error": "Failed to fetch patient details"}), 500
 
 
-@app.route('/fhir/Patient/<patient_id>/summary', methods=['GET'])
-def get_patient_summary(patient_id):
+def _fetch_patient_summary(patient_id):
+    """GET [server]/Patient/<id>/$summary.
+
+    Returns ``(bundle, None)`` on success or ``(None, error_dict)`` on failure.
+    Some servers (e.g. smile) allow unauthenticated access to $summary but reject
+    requests that include credentials for an account without the required role, so a
+    401/403 sent with credentials is retried once without them.
+    """
     server_url = get_fhir_server_url()
     api_path = f"/Patient/{patient_id}/$summary"
     full_url = server_url.rstrip('/') + '/' + api_path.lstrip('/')
     auth_creds = get_fhir_auth_credentials()
-    print(f"[Patient Summary] Server URL  : {server_url}")
-    print(f"[Patient Summary] Full API call: GET {full_url}")
-    print(f"[Patient Summary] Auth         : {'credentials provided' if auth_creds else 'no auth (unauthenticated)'}")
+    print(f"[Patient Summary] Full API call: GET {full_url} "
+          f"({'credentials provided' if auth_creds else 'no auth'})")
+    debug = {"server_url": server_url, "api_call": f"GET {full_url}"}
     try:
-        response = fhir_get(
-            api_path,
-            fhir_server_url=server_url,
-            auth_credentials=auth_creds,
-            timeout=60
-        )
+        response = fhir_get(api_path, fhir_server_url=server_url, auth_credentials=auth_creds, timeout=60)
+        if response.status_code in (401, 403) and auth_creds is not None:
+            print("[Patient Summary] 401/403 with credentials — retrying unauthenticated")
+            response = fhir_get(api_path, fhir_server_url=server_url, auth_credentials=None, timeout=60)
     except Exception as exc:
         print(f"[Patient Summary] EXCEPTION during request: {exc}")
-        error_message = {
-            "error": "Failed to fetch patient summary",
-            "debug": {
-                "server_url": server_url,
-                "api_call": f"GET {full_url}",
-                "exception": str(exc)
-            }
-        }
-        return render_template('partials/json_textarea.html', bundle_json=json.dumps(error_message, indent=2))
+        return None, {"error": "Failed to fetch patient summary", "debug": {**debug, "exception": str(exc)}}
 
     print(f"[Patient Summary] Response status: {response.status_code}")
-
-    # Some servers (e.g. smile) allow unauthenticated access to $summary but reject
-    # requests that include credentials for an account without the required role.
-    # If we get a 401 AND we sent credentials, retry once without them.
-    if response.status_code in (401, 403) and auth_creds is not None:
-        print("[Patient Summary] 401 with credentials — retrying unauthenticated")
+    if response.status_code == 200:
         try:
-            response = fhir_get(
-                api_path,
-                fhir_server_url=server_url,
-                auth_credentials=None,
-                timeout=60
-            )
-        except Exception as exc:
-            print(f"[Patient Summary] EXCEPTION on unauthenticated retry: {exc}")
-            error_message = {
-                "error": "Failed to fetch patient summary",
-                "debug": {"server_url": server_url, "api_call": f"GET {full_url}", "exception": str(exc)}
-            }
-            return render_template('partials/json_textarea.html', bundle_json=json.dumps(error_message, indent=2))
-        print(f"[Patient Summary] Retry response status: {response.status_code}")
+            return response.json(), None
+        except ValueError:
+            return None, {"error": "Patient summary response was not JSON",
+                          "debug": {**debug, "response": response.text[:2000]}}
+    try:
+        response_body = response.json()
+    except Exception:
+        response_body = response.text
+    return None, {"error": "Failed to fetch patient summary",
+                  "debug": {**debug, "http_status": response.status_code, "response": response_body}}
 
-    if response.status_code == 200:
-        bundle = response.json()       
-        bundle_json = json.dumps(bundle, indent=2)
-        return render_template('partials/json_textarea.html', bundle_json=bundle_json)
-    else:
-        try:
-            response_body = response.json()
-        except Exception:
-            response_body = response.text
-        print(f"[Patient Summary] Error response body: {response_body}")
-        error_message = {
-            "error": "Failed to fetch patient summary",
-            "debug": {
-                "server_url": server_url,
-                "api_call": f"GET {full_url}",
-                "http_status": response.status_code,
-                "response": response_body
-            }
-        }
-        return render_template('partials/json_textarea.html', bundle_json=json.dumps(error_message, indent=2))
-    
 
-@app.route('/fhir/Procedures/<patient_id>')
+@app.route('/fhir/Patient/<patient_id>/summary', methods=['GET'])
+def get_patient_summary(patient_id):
+    bundle, error = _fetch_patient_summary(patient_id)
+    return render_template('partials/json_textarea.html', bundle_json=json.dumps(bundle or error, indent=2))
+
+
+def _render_aups_view(bundle, source):
+    try:
+        view = parse_summary(bundle)
+    except ValueError as exc:
+        return render_template('partials/aups_view.html', view=None, error=str(exc), source=source)
+    return render_template('partials/aups_view.html', view=view, error=None, source=source)
+
+
+@app.route('/fhir/Patient/<patient_id>/aups-view', methods=['GET'])
 @login_required
-def get_procedures(patient_id):
-    response = fhir_get(f"/Procedure?subject={patient_id}&_sort=-date&_count=5", fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials(), timeout=10)
-    if response.status_code == 200:
-        procedures = response.json().get('entry', [])
-        # Prepare procedures for rendering
-        for proc in procedures:
-            resource = proc['resource']
-            performedDateTime = resource.get('performedDateTime', '')
-            dt_performed = format_fhir_date(performedDateTime,"DT")
-            resource['performedDate'] = dt_performed
-            # Get name of procedure
-            resource['procName'] = get_text_display(resource.get('code'))           
-            # Get Reason for Procedure
-            resource['procReason'] = get_text_display(resource.get('reasonCode', [{}])[0])
-        return render_template('procedures.html', procedures=[proc['resource'] for proc in procedures])
-    else:
-        return "Procedures not found", 404
+def get_patient_summary_view(patient_id):
+    """Render the patient's $summary document as AU Patient Summary blocks."""
+    bundle, error = _fetch_patient_summary(patient_id)
+    if error:
+        return render_template('partials/aups_view.html', view=None, source='$summary',
+                               error=error['error'], debug=json.dumps(error.get('debug'), indent=2))
+    return _render_aups_view(bundle, f'GET Patient/{patient_id}/$summary')
 
-@app.route('/fhir/Immunisation/<patient_id>')
+
+@app.route('/aups/view', methods=['POST'])
 @login_required
-def get_immunizations(patient_id):
-    response = fhir_get(
-        f"/Immunization?patient={patient_id}&_sort=-date&_count=10",
-        fhir_server_url=get_fhir_server_url(),
-        timeout=10
-    )
-    if response.status_code == 200:
-        immunisations = response.json().get('entry', [])
-        processed_immunisations = []
-        for entry in immunisations:
-            resource = entry.get('resource', {})
-            # Vaccine display
-            vaccine_display = get_text_display(resource.get('vaccineCode'))
-            # Occurrence DateTime
-            occurrence = resource.get('occurrenceDateTime', '')            
-            dt_occurrence = format_fhir_date(occurrence)
-            # Status
-            status = resource.get('status', 'unknown')
-            # Create vaccination summary
-            processed_immunisations.append({
-                'vaccine': vaccine_display,
-                'date': dt_occurrence,
-                'status': status
-            })
-        return render_template('immunisations.html', immunisations=processed_immunisations)
-    else:
-        return "Immunisation not found", 404
+def render_posted_summary():
+    """Render an AU Patient Summary Bundle supplied by the user (form field ``bundle`` or a JSON body)."""
+    raw = request.form.get('bundle') if request.form else None
+    try:
+        bundle = json.loads(raw) if raw else request.get_json(force=True, silent=False)
+    except Exception as exc:
+        return render_template('partials/aups_view.html', view=None, source='uploaded bundle',
+                               error=f'Could not parse JSON: {exc}')
+    return _render_aups_view(bundle, request.form.get('filename') or 'uploaded bundle')
 
 @app.route('/fhir/RequesterOrganisations')
 @login_required
@@ -1444,283 +1398,6 @@ def get_organisation_by_type(org_type):
     sorted_orgs = sorted(organisations, key=lambda x: x["name"])
     logging.info(f"Returning {len(sorted_orgs)} total organisations for dropdown")
     return render_template('partials/organisations.html', organisations=sorted_orgs)
-
-
-@app.route('/fhir/LabResults/<patient_id>')
-@login_required
-def get_lab_results(patient_id):
-    response = fhir_get(f"/Observation?patient={patient_id}&_sort=-date", fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials(), timeout=10)
-    if response.status_code == 200:
-        lab_results = response.json().get('entry', [])
-        filtered_lab_results = []
-        for result in lab_results:
-            resource = result.get('resource', {})
-            categories = resource.get('category', [])
-            if not find_category(categories, "http://terminology.hl7.org/CodeSystem/observation-category", "laboratory"):
-                continue  # Skip non-lab observations
-
-            # Found a lab result
-            unit = ""
-            if 'valueQuantity' in resource:
-                value = resource['valueQuantity'].get('value')
-                unit = resource['valueQuantity'].get('unit', '')
-            elif 'valueCodeableConcept' in resource:
-                value = resource['valueCodeableConcept'].get('text')
-                if not value and resource['valueCodeableConcept'].get('coding'):
-                    value = resource['valueCodeableConcept']['coding'][0].get('display')
-            else:
-                value = resource.get('dataAbsentReason', {}).get('text', 'No result')
-            resource['display_value'] = value
-            resource['display_unit'] = unit
-
-            test_display = get_text_display(resource.get('code'))
-            resource['test_display'] = test_display 
-
-            resource['formattedDate'] = format_fhir_date(resource.get('effectiveDateTime', 'DT'))
-            filtered_lab_results.append(resource)
-
-        return render_template('lab_results.html', lab_results=filtered_lab_results)
-    else:
-        return "Lab results not found", 404
-
-@app.route('/fhir/VitalSigns/<patient_id>')
-@login_required
-def get_vital_signs(patient_id):
-    # First, get blood pressure observations  85354-9 or 75367002
-    bp_response = fhir_get(
-        f"/Observation?patient={patient_id}&code=http://loinc.org|85354-9,http://snomed.info/sct|75367002&_sort=-date&_count=10", fhir_server_url=get_fhir_server_url(), timeout=10)
-    
-    # Get heart rate observations 8867-4 or http://snomed.info/sct|364075005
-    hr_response = fhir_get(
-        f"Observation?patient={patient_id}&code=http://loinc.org|8867-4,http://snomed.info/sct|364075005&_sort=-date&_count=10", fhir_server_url=get_fhir_server_url(), timeout=10) 
-    
-    # Get temperature observations. 8310-5 or 386725007
-    temp_response = fhir_get(
-        f"/Observation?patient={patient_id}&code=http://loinc.org|8310-5,http://snomed.info/sct|386725007&_sort=-date&_count=10", fhir_server_url=get_fhir_server_url(), timeout=10)
-    
-    # Get respiratory rate observations 9279-1 or 86290005
-    resp_response = fhir_get(
-        f"/Observation?patient={patient_id}&code=http://loinc.org|9279-1,http://snomed.info/sct|86290005&_sort=-date&_count=10", fhir_server_url=get_fhir_server_url(), timeout=10)
-
-    vital_signs = []    
-    # Process blood pressure readings
-    if bp_response.status_code == 200:
-        bp_data = bp_response.json().get('entry', [])
-        for entry in bp_data:
-            resource = entry.get('resource', {})
-            
-            # Extract the date
-            effective_date = resource.get('effectiveDateTime', '')
-            dt_observation = format_fhir_date(effective_date,"DT")
-                
-            # Extract components (systolic/diastolic)
-            components = resource.get('component', [])
-            systolic = None
-            diastolic = None
-            
-            for component in components:
-                coding = component.get('code', {}).get('coding', [{}])
-                if coding and coding[0].get('display') == 'Systolic blood pressure':
-                    systolic = component.get('valueQuantity', {}).get('value')
-                elif coding and coding[0].get('display') == 'Diastolic blood pressure':
-                    diastolic = component.get('valueQuantity', {}).get('value')
-            
-            # Only add if we have both systolic and diastolic
-            if systolic is not None and diastolic is not None:
-                vital_signs.append({
-                    'date': dt_observation,
-                    'type': 'Blood Pressure',
-                    'value': f'{systolic}/{diastolic}',
-                    'unit': 'mmHg',
-                    'status': resource.get('status', 'unknown'),
-                    'components': {
-                        'systolic': systolic,
-                        'diastolic': diastolic
-                    }
-                })
-    
-    # Process heart rate readings
-    if hr_response.status_code == 200:
-        hr_data = hr_response.json().get('entry', [])
-        for entry in hr_data:
-            resource = entry.get('resource', {})
-            
-            # Extract the date
-            effective_date = resource.get('effectiveDateTime', '')
-            dt_observation = format_fhir_date(effective_date,"DT")           
-                
-            # Get heart rate value
-            value_quantity = resource.get('valueQuantity', {})
-            value = value_quantity.get('value')
-            
-            # Make sure value is a number
-            try:
-                value = float(value)
-            except (ValueError, TypeError):
-                value = 0
-            
-            vital_signs.append({
-                'date': dt_observation,
-                'type': 'Heart Rate',
-                'value': value,
-                'unit': value_quantity.get('unit', 'bpm'),
-                'status': resource.get('status', 'unknown')
-            })
-    
-    # Process temperature readings
-    if temp_response.status_code == 200:
-        temp_data = temp_response.json().get('entry', [])
-        for entry in temp_data:
-            resource = entry.get('resource', {})
-            
-            # Extract the date
-            effective_date = resource.get('effectiveDateTime', '')
-            dt_observation = format_fhir_date(effective_date,"DT")
-                
-            # Get temperature value
-            value_quantity = resource.get('valueQuantity', {})
-            
-            vital_signs.append({
-                'date': dt_observation,
-                'type': 'Temperature',
-                'value': value_quantity.get('value', 'Unknown'),
-                'unit': value_quantity.get('unit', '°C'),
-                'status': resource.get('status', 'unknown')
-            })
-    
-    # Process respiratory rate readings
-    if resp_response.status_code == 200:
-        resp_data = resp_response.json().get('entry', [])
-        for entry in resp_data:
-            resource = entry.get('resource', {})
-            
-            # Extract the date
-            effective_date = resource.get('effectiveDateTime', '')
-            dt_observation = format_fhir_date(effective_date,"DT")
-                
-            # Get respiratory rate value
-            value_quantity = resource.get('valueQuantity', {})
-            
-            vital_signs.append({
-                'date': dt_observation,
-                'type': 'Respiratory Rate',
-                'value': value_quantity.get('value', 'Unknown'),
-                'unit': value_quantity.get('unit', '/min'),
-                'status': resource.get('status', 'unknown')
-            })
-    
-    # Sort vital signs by date (newest first)
-    vital_signs.sort(key=lambda x: x['date'], reverse=True)
-    
-    return render_template('vital_signs.html', vital_signs=vital_signs)
-
-@app.route('/fhir/Medications/<patient_id>')
-@login_required
-def get_medications(patient_id):
-    # Get medications
-    medications = []
-    meds_response = fhir_get(f"/MedicationRequest?patient={patient_id}&_count=10", fhir_server_url=get_fhir_server_url(), auth_credentials=get_fhir_auth_credentials(), timeout=10)       
-    
-    if meds_response.status_code == 200:
-        meds_data = meds_response.json()
-        # Check if 'entry' exists in the response
-        if 'entry' in meds_data:
-            for entry in meds_data.get('entry', []):
-                resource = entry.get('resource', {})
-                
-                # Extract the date
-                authored_date = resource.get('authoredOn', '')
-                dt_authored = format_fhir_date(authored_date)
-                
-                # Extract medication reference or codeable concept
-                medication_name = "Unknown Medication"
-                if resource.get('medicationReference'):
-                    medication_name = resource['medicationReference'].get('display', 'Unknown Medication')
-                elif resource.get('medicationCodeableConcept'):
-                    medication_name = get_text_display(resource['medicationCodeableConcept'], default="Unknown Medication")
-                                
-                                # Get dosage instructions
-                dosage_instructions = []
-                if resource.get('dosageInstruction'):
-                    for dosage in resource['dosageInstruction']:
-                        text = dosage.get('text', '')
-                        if text:
-                            dosage_instructions.append(text)
-                
-                # Get status
-                status = resource.get('status', 'unknown')
-                
-                medications.append({
-                    'date': dt_authored,
-                    'name': medication_name,
-                    'dosage': ', '.join(dosage_instructions) if dosage_instructions else 'No specific instructions',
-                    'status': status
-                })
-        
-        # Log if no medications found
-        if not medications:
-            logging.info(f"No medications found for patient {patient_id}")
-    
-    # Sort medications by date (newest first)
-    medications.sort(key=lambda x: x['date'], reverse=True)
-    
-    return render_template('medications.html', medications=medications)
-
-@app.route('/fhir/Allergies/<patient_id>')
-@login_required
-def get_allergies(patient_id):
-    # Get allergies
-    allergy_response = fhir_get(
-        f"/AllergyIntolerance?patient={patient_id}&_count=10", get_fhir_server_url(), timeout=10)      
-    allergies = []    
-    if allergy_response.status_code == 200:
-        allergy_data = allergy_response.json()
-        # Check if 'entry' exists in the response
-        if 'entry' in allergy_data:
-            for entry in allergy_data.get('entry', []):
-                resource = entry.get('resource', {})
-                
-                # Extract the date
-                recorded_date = resource.get('recordedDate', '')
-                dt_recorded = format_fhir_date(recorded_date)               
-                
-                # Extract allergy code or display
-                allergy_name = get_text_display(resource.get('code'))                
-                
-                # Get reaction
-                reactions = []
-                if resource.get('reaction'):
-                    for reaction in resource['reaction']:
-                        if reaction.get('manifestation'):
-                            for manifestation in reaction['manifestation']:
-                                reactions.append(get_text_display(manifestation))                
-                # Get status
-                clinical_status = "Unknown"
-                if resource.get('clinicalStatus'):
-                    if resource['clinicalStatus'].get('coding'):
-                        clinical_status = resource['clinicalStatus']['coding'][0].get('display', 'Unknown')
-                    else:
-                        clinical_status = resource['clinicalStatus'].get('text', 'Unknown')
-                
-                # Get severity
-                severity = resource.get('severity', 'unknown')
-                
-                allergies.append({
-                    'date': dt_recorded,
-                    'name': allergy_name,
-                    'reactions': reactions,
-                    'severity': severity,
-                    'status': clinical_status
-                })
-        
-        # Log if no allergies found
-        if not allergies:
-            logging.info(f"No allergies found for patient {patient_id}")
-    
-    # Sort allergies by date (newest first)
-    allergies.sort(key=lambda x: x['date'], reverse=True)
-    
-    return render_template('allergies.html', allergies=allergies)
 
 
 @app.route('/session/requesting-practitioner-widget')

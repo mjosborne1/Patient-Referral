@@ -67,18 +67,6 @@ def test_a_slot_taken_meanwhile_says_so_and_offers_fresh_slots(client, fhir):
     assert "HX-Trigger" not in response.headers
 
 
-def test_patient_details_page_loads_the_booking_panel(client, fhir):
-    fhir.get(f"{BASE}/Patient/pat-1", json={
-        "resourceType": "Patient", "id": "pat-1", "name": [{"given": ["Ada"], "family": "Lee"}]})
-
-    response = client.get("/fhir/Patient/pat-1", headers=FHIR_HEADERS)
-
-    body = response.get_data(as_text=True)
-    assert response.status_code == 200
-    assert 'hx-get="/booking/patient/pat-1/panel"' in body
-    assert 'id="bookingModalBody"' in body
-
-
 from booking import SERVICE_BOOKED  # noqa: E402
 from tests.booking.conftest import (FULFILMENT_TASK, GROUP_TASK, HELD_SLOT,  # noqa: E402
                                     PROPOSED_APPOINTMENT, transaction_response)

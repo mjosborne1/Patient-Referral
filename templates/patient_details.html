@@ -159,179 +159,35 @@
 </div>
 
 <div class="card mt-4">
-    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-calendar-check me-2"></i> Requests &amp; Appointments</span>
-        <button class="btn btn-sm btn-light" hx-get="/booking/patient/{{ patient.id }}/panel"
-                hx-target="#bookingPanel" title="Refresh">
-            <i class="fas fa-sync-alt"></i>
-        </button>
+    <div class="card-header bg-primary text-white d-flex flex-wrap gap-2 justify-content-between align-items-center">
+        <span><i class="fas fa-file-medical me-2"></i> AU Patient Summary</span>
+        <div class="d-flex gap-2">
+            <button id="aupsRenderBtn" class="btn btn-sm btn-light"
+                    hx-get="/fhir/Patient/{{ patient.id }}/aups-view"
+                    hx-target="#aupsView"
+                    hx-indicator="#aups-loader"
+                    title="Fetch Patient/{{ patient.id }}/$summary and show it as sections">
+                <i class="fas fa-server me-1"></i> From $summary
+            </button>
+            <label class="btn btn-sm btn-outline-light mb-0" title="Show a Bundle from a JSON file, e.g. one of the HL7 AU test bundles">
+                <i class="fas fa-file-upload me-1"></i> Load bundle file
+                <input type="file" accept=".json,application/json,application/fhir+json" class="d-none"
+                       onchange="renderAupsFile(this)">
+            </label>
+        </div>
     </div>
     <div class="card-body">
-        <div id="bookingPanel" hx-get="/booking/patient/{{ patient.id }}/panel"
-             hx-trigger="load, booking-changed from:body">
-            <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading imaging requests…</div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="bookingModalLabel"><i class="fas fa-calendar-plus me-2"></i>Book imaging appointment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="bookingModalBody">
-                <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Finding free slots…</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mt-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <i class="fas fa-vial me-2"></i> Lab Results
-            </div>
-            <div class="card-body">
-                <button class="btn btn-outline-primary mb-1 w-100" 
-                        hx-get="/fhir/LabResults/{{ patient['id'] }}" 
-                        hx-target="#labResults" 
-                        hx-trigger="click" 
-                        hx-indicator="#lab-results-loader">
-                    <i class="fas fa-vial me-2"></i> View Lab Results
-                </button>
-                <div id="lab-results-loader" class="htmx-indicator">
-                    <div class="d-flex justify-content-center my-1">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading lab results...</span>
-                        </div>
-                    </div>
+        <div id="aups-loader" class="htmx-indicator">
+            <div class="d-flex justify-content-center my-1">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading patient summary...</span>
                 </div>
-                <div id="labResults" class="fade-me-in"></div>
             </div>
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <i class="fas fa-chart-line me-2"></i> Vital Signs
-            </div>
-            <div class="card-body">
-                <button class="btn btn-outline-primary mb-1 w-100" 
-                        hx-get="/fhir/VitalSigns/{{ patient['id'] }}" 
-                        hx-target="#vitalSigns" 
-                        hx-indicator="#vital-signs-loader">
-                    <i class="fas fa-heartbeat me-2"></i> View Vital Signs
-                </button>
-                <div id="vital-signs-loader" class="htmx-indicator">
-                    <div class="d-flex justify-content-center my-1">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading vital signs...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="vitalSigns" class="fade-me-in"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mt-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <i class="fas fa-pills me-2"></i> Medications
-            </div>
-            <div class="card-body">
-                <button class="btn btn-outline-primary mb-1 w-100" 
-                        hx-get="/fhir/Medications/{{ patient['id'] }}" 
-                        hx-target="#medications" 
-                        hx-indicator="#medications-loader">
-                    <i class="fas fa-prescription-bottle-alt me-2"></i> View Medications
-                </button>
-                <div id="medications-loader" class="htmx-indicator">
-                    <div class="d-flex justify-content-center my-1">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading medications...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="medications" class="fade-me-in"></div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <i class="fas fa-allergies me-2"></i> Allergies
-            </div>
-            <div class="card-body">
-                <button class="btn btn-outline-primary mb-1 w-100" 
-                        hx-get="/fhir/Allergies/{{ patient['id'] }}" 
-                        hx-target="#allergies" 
-                        hx-indicator="#allergies-loader">
-                    <i class="fas fa-exclamation-triangle me-2"></i> View Allergies
-                </button>
-                <div id="allergies-loader" class="htmx-indicator">
-                    <div class="d-flex justify-content-center my-1">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading allergies...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="allergies" class="fade-me-in"></div>
-            </div>
-        </div>
-    </div>
-</div>
-<!--Procedures-->
-
-<div class="row mt-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <i class="fas fa-bed-pulse me-2"></i> Procedures
-            </div>
-            <div class="card-body">
-                <button class="btn btn-outline-primary mb-1 w-100" 
-                        hx-get="/fhir/Procedures/{{ patient['id'] }}" 
-                        hx-target="#procedures" 
-                        hx-indicator="#procedures-loader">
-                    <i class="fas fa-bed-pulse me-2"></i> View Procedures
-                </button>
-                <div id="procedures-loader" class="htmx-indicator">
-                    <div class="d-flex justify-content-center my-1">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading Procedures...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="procedures" class="fade-me-in"></div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <i class="fas fa-syringe me-2"></i> Immunisation History
-            </div>
-            <div class="card-body">
-                <button class="btn btn-outline-primary mb-1 w-100" 
-                        hx-get="/fhir/Immunisation/{{ patient['id'] }}" 
-                        hx-target="#immunisation" 
-                        hx-indicator="#immunisation-loader">
-                    <i class="fas fa-syringe me-2"></i> View Immunisation History
-                </button>
-                <div id="immunisation-loader" class="htmx-indicator">
-                    <div class="d-flex justify-content-center my-1">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading Immunisation History...</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="immunisation" class="fade-me-in"></div>
+        <div id="aupsView" class="fade-me-in">
+            <div class="text-muted small">
+                Shows a patient summary document section by section, in Composition order.
+                Use <strong>From $summary</strong> for this patient's server summary, or load an AU PS Bundle file.
             </div>
         </div>
     </div>
@@ -419,33 +275,28 @@
         URL.revokeObjectURL(url);
     }
     
+    // Render an AU PS Bundle chosen from a local file into the AU Patient Summary card
+    function renderAupsFile(input) {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            htmx.ajax('POST', '/aups/view', {
+                target: '#aupsView',
+                values: { bundle: reader.result, filename: file.name },
+            });
+            input.value = '';  // allow re-loading the same file
+        };
+        reader.readAsText(file);
+    }
+
     // Load all patient data when Show Patient Summary is clicked
     function loadAllPatientData(patientId) {
         // Small delay to let the summary request initiate first
         setTimeout(() => {
-            // Trigger Lab Results
-            const labResultsBtn = document.querySelector('button[hx-get="/fhir/LabResults/' + patientId + '"]');
-            if (labResultsBtn) labResultsBtn.click();
-            
-            // Trigger Vital Signs
-            const vitalSignsBtn = document.querySelector('button[hx-get="/fhir/VitalSigns/' + patientId + '"]');
-            if (vitalSignsBtn) vitalSignsBtn.click();
-            
-            // Trigger Medications
-            const medicationsBtn = document.querySelector('button[hx-get="/fhir/Medications/' + patientId + '"]');
-            if (medicationsBtn) medicationsBtn.click();
-            
-            // Trigger Allergies
-            const allergiesBtn = document.querySelector('button[hx-get="/fhir/Allergies/' + patientId + '"]');
-            if (allergiesBtn) allergiesBtn.click();
-            
-            // Trigger Procedures
-            const proceduresBtn = document.querySelector('button[hx-get="/fhir/Procedures/' + patientId + '"]');
-            if (proceduresBtn) proceduresBtn.click();
-            
-            // Trigger Immunisation History
-            const immunisationBtn = document.querySelector('button[hx-get="/fhir/Immunisation/' + patientId + '"]');
-            if (immunisationBtn) immunisationBtn.click();
+            // Render the $summary document as AU PS sections
+            const aupsBtn = document.getElementById('aupsRenderBtn');
+            if (aupsBtn) aupsBtn.click();
         }, 100);
     }
     
